@@ -204,3 +204,20 @@ def test_read_lines_keeps_parallel_files_aligned(tmp_path):
     src.write_bytes("x\ry\nz\n".encode())      # one stray \r
     tgt.write_bytes("p\nq\n".encode())          # none
     assert len(read_lines(src)) == len(read_lines(tgt)) == 2
+
+
+def test_wider_beam_not_worse_under_length_normalisation():
+    """Beam monotonicity must also hold on the --length-norm path.
+
+    Note on strength: this is a property check, not a regression test for the
+    early-stop guard in beam.py. On a tiny random model the guarded comparison
+    happens not to change the outcome, so this test still passes if the guard is
+    removed. The guard stays because the comparison is invalid on its face --
+    completed hypotheses carry length-normalised scores while partials do not --
+    not because this test catches it.
+    """
+    m, sv, tv = tiny_model(seed=13)
+    for src in ([4, 5, 6], [7, 8, 9, 10], [11, 12]):
+        _, s2 = beam_search(m, src, sv, tv, beam_size=2, reverse_source=True, length_norm=1.0)
+        _, s12 = beam_search(m, src, sv, tv, beam_size=12, reverse_source=True, length_norm=1.0)
+        assert s12 >= s2 - 1e-5, f"length-normalised B=12 scored worse than B=2 on {src}: {s12} < {s2}"

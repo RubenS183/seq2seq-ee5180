@@ -102,8 +102,13 @@ def beam_search(
         survivors = beam_idx[keep]
         states = [(h[:, survivors, :], c[:, survivors, :]) for (h, c) in new_states]
 
-        if len(completed) >= beam_size:
-            # Every remaining partial is already worse than the best complete one.
+        # Admissible early stop: log-probabilities are negative, so extending a
+        # partial hypothesis can only lower its score. Once the best partial is
+        # already below the best completed hypothesis, nothing can overtake it.
+        # This only holds when scores are comparable -- with length
+        # normalisation the completed scores are divided by length and the
+        # partials are not, so the comparison would be invalid.
+        if not length_norm and len(completed) >= beam_size:
             if beam_scores.max().item() < max(s for s, _ in completed):
                 break
 
