@@ -1,0 +1,36 @@
+{
+  "checkpoints": [
+    "/Users/rubenstalin/ee5180-work/runs/multi30k/fwd_seed1/best.pt"
+  ],
+  "n_models": 1,
+  "beam_size": 12,
+  "reverse_source": false,
+  "length_norm": 0.0,
+  "n_sentences": 1000,
+  "bleu_tok": 3.75,
+  "bleu_detok": 3.55,
+  "test_ppl": 14.352,
+  "sig_tok": "nrefs:1|case:mixed|eff:no|tok:none|smooth:exp|version:2.6.0",
+  "sig_detok": "nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0",
+  "decode_seconds": 34.3,
+  "bleu_by_length": [
+    {
+      "bucket": "1-10",
+      "n": 287,
+      "bleu_tok": 4.200737788090465
+    },
+    {
+      "bucket": "11-20",
+      "n": 659,
+      "bleu_tok": 3.71827949761637
+    },
+    {
+      "bucket": "21-30",
+      "n": 52,
+      "bleu_tok": 3.0456449576965055
+    }
+  ],
+  "dev_ppl_at_checkpoint": [
+    15.116843118306836
+  ]
+}

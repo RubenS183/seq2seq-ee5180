@@ -149,7 +149,11 @@ def main():
     ap.add_argument("--reverse-source", dest="reverse_source", action="store_true", default=False)
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--length-norm", type=float, default=0.0)
-    ap.add_argument("--device", default="auto")
+    # Beam search is latency-bound, not throughput-bound: batches are one
+    # sentence x B beams, so MPS kernel-launch overhead dominates. Measured on
+    # an M1 Pro at B=12: CPU 34 ms/sentence vs MPS 317 ms/sentence -- 9x faster
+    # on CPU. Training stays on MPS; decoding defaults to CPU.
+    ap.add_argument("--device", default="cpu")
     ap.add_argument("--src-lang", default="en")
     ap.add_argument("--tgt-lang", default="fr")
     ap.add_argument("--out-dir", default=None)

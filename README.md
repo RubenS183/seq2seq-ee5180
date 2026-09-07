@@ -123,6 +123,12 @@ make results-wmt
 Training is resumable: every epoch writes `last.pt` atomically, and a rerun of
 the same command picks up where it stopped.
 
+**Device note.** Training runs on MPS; **decoding defaults to CPU**. Beam search
+is latency-bound rather than throughput-bound — each step is one sentence × B
+beams — so Metal's per-kernel launch overhead dominates. Measured on the M1 Pro
+at B=12: **34 ms/sentence on CPU vs 317 ms/sentence on MPS**, a 9× difference.
+Pass `--device mps` to override.
+
 ### Correctness gates
 
 `make test` asserts, among others:

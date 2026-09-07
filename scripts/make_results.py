@@ -46,7 +46,7 @@ def main():
     ap.add_argument("--seeds", type=int, nargs="+", default=[1])
     ap.add_argument("--ensemble", action="store_true", help="also decode a seed-ensemble")
     ap.add_argument("--limit", type=int, default=0)
-    ap.add_argument("--device", default="auto")
+    ap.add_argument("--device", default="cpu")  # see evaluate.py: 9x faster than MPS for beam search
     ap.add_argument("--scale-note", default="")
     args = ap.parse_args()
 
