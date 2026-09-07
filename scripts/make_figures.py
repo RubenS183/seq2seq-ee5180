@@ -132,7 +132,24 @@ def time_lag(out: Path):
     return out
 
 
+def objective(out: Path):
+    """The training objective, rendered with matplotlib mathtext.
+
+    The report pipeline has no MathJax or LaTeX, so display equations become
+    images rather than raw dollar-sign soup.
+    """
+    expr = (r"$\dfrac{1}{|\mathcal{S}|}\sum_{(T,S)\in\mathcal{S}} \log\, p(T \mid S)"
+            r"\qquad\mathrm{where}\qquad p(T \mid S) = \prod_{t}\ \ p(y_t \mid y_{<t},\, v)$")
+    fig = plt.figure(figsize=(8.4, 1.05))
+    fig.text(0.5, 0.5, expr, ha="center", va="center", fontsize=17, color="#18204a")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out, dpi=200, transparent=True, bbox_inches="tight", pad_inches=0.18)
+    plt.close(fig)
+    return out
+
+
 if __name__ == "__main__":
     out_dir = Path(sys.argv[1] if len(sys.argv) > 1 else "results/figures")
     print(model_schematic(out_dir / "model_schematic.png"))
     print(time_lag(out_dir / "time_lag.png"))
+    print(objective(out_dir / "objective.png"))
