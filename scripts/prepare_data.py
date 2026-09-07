@@ -18,7 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from seq2seq.data import clean_pairs, read_lines, tokenize_lines  # noqa: E402
+from seq2seq.data import ParallelDataset, clean_pairs, read_lines, tokenize_lines  # noqa: E402
 from seq2seq.vocab import Vocab  # noqa: E402
 
 
@@ -91,10 +91,11 @@ def main():
     print(f"  |src|={len(src_vocab):,} |tgt|={len(tgt_vocab):,}  unk rates: {report['unk_rate']}")
 
     for name, (s, t) in {"train": (tr_s, tr_t), "dev": (dv_s, dv_t), "test": (te_s, te_t)}.items():
-        (out / f"{name}.ids.json").write_text(
-            json.dumps({"src": [src_vocab.encode(x) for x in s],
-                        "tgt": [tgt_vocab.encode(x) for x in t]})
-        )
+        # .npz is what training loads: int32, ~10x smaller resident than the
+        # JSON's Python int objects, which matters on a 16 GB machine.
+        ParallelDataset(
+            [src_vocab.encode(x) for x in s], [tgt_vocab.encode(x) for x in t]
+        ).save_npz(out / f"{name}.npz")
         (out / f"{name}.tok.{args.src_lang}").write_text(
             "\n".join(" ".join(x) for x in s) + "\n", encoding="utf-8"
         )

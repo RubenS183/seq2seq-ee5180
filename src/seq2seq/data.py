@@ -19,6 +19,7 @@ import random
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
 import torch
 
 from .vocab import Vocab
@@ -94,10 +95,64 @@ def clean_pairs(
 
 # --------------------------------------------------------------------- dataset
 
+class Sequences:
+    """Ragged integer sequences held as one flat array plus offsets.
+
+    A list of 500k Python lists of small ints costs ~1 GB resident (28 bytes per
+    int object, 8 per pointer, 56 per list). The same data as int32 costs ~50 MB.
+    That matters: at 1 GB the training process on a loaded 16 GB machine gets its
+    pages evicted and every minibatch pages back in, which measured 3x slower per
+    step than the same code with the data resident.
+
+    Indexing returns plain lists, so callers are unchanged.
+    """
+
+    __slots__ = ("flat", "offsets", "lengths")
+
+    def __init__(self, flat, offsets):
+        self.flat = flat
+        self.offsets = offsets
+        self.lengths = np.diff(offsets)
+
+    @classmethod
+    def from_lists(cls, seqs) -> "Sequences":
+        lengths = np.fromiter((len(s) for s in seqs), dtype=np.int64, count=len(seqs))
+        offsets = np.zeros(len(seqs) + 1, dtype=np.int64)
+        np.cumsum(lengths, out=offsets[1:])
+        flat = np.empty(int(offsets[-1]), dtype=np.int32)
+        for i, s in enumerate(seqs):
+            if s:
+                flat[offsets[i] : offsets[i + 1]] = s
+        return cls(flat, offsets)
+
+    def __len__(self) -> int:
+        return len(self.offsets) - 1
+
+    def __getitem__(self, i):
+        if isinstance(i, slice):
+            return [self[j] for j in range(*i.indices(len(self)))]
+        if i < 0:
+            i += len(self)
+        return self.flat[self.offsets[i] : self.offsets[i + 1]].tolist()
+
+    def length(self, i) -> int:
+        return int(self.lengths[i])
+
+    def __iter__(self):
+        for i in range(len(self)):
+            yield self[i]
+
+
 @dataclass
 class ParallelDataset:
-    src_ids: list[list[int]]
-    tgt_ids: list[list[int]]
+    src_ids: Sequences
+    tgt_ids: Sequences
+
+    def __post_init__(self):
+        if not isinstance(self.src_ids, Sequences):
+            self.src_ids = Sequences.from_lists(self.src_ids)
+        if not isinstance(self.tgt_ids, Sequences):
+            self.tgt_ids = Sequences.from_lists(self.tgt_ids)
 
     def __len__(self) -> int:
         return len(self.src_ids)
@@ -107,6 +162,21 @@ class ParallelDataset:
         return cls(
             [src_vocab.encode(s) for s in src_toks],
             [tgt_vocab.encode(t) for t in tgt_toks],
+        )
+
+    def save_npz(self, path) -> None:
+        np.savez(
+            path,
+            src_flat=self.src_ids.flat, src_off=self.src_ids.offsets,
+            tgt_flat=self.tgt_ids.flat, tgt_off=self.tgt_ids.offsets,
+        )
+
+    @classmethod
+    def load_npz(cls, path) -> "ParallelDataset":
+        z = np.load(path)
+        return cls(
+            Sequences(z["src_flat"], z["src_off"]),
+            Sequences(z["tgt_flat"], z["tgt_off"]),
         )
 
 
@@ -128,7 +198,8 @@ def make_batches(
     if shuffle:
         rng.shuffle(idx)
     noise = (lambda: rng.randint(0, bucket_noise)) if (shuffle and bucket_noise) else (lambda: 0)
-    idx.sort(key=lambda i: (len(dataset.src_ids[i]) + noise(), len(dataset.tgt_ids[i])))
+    src_len, tgt_len = dataset.src_ids.lengths, dataset.tgt_ids.lengths
+    idx.sort(key=lambda i: (src_len[i] + noise(), tgt_len[i]))
     batches = [idx[i : i + batch_size] for i in range(0, len(idx), batch_size)]
     if shuffle:
         rng.shuffle(batches)

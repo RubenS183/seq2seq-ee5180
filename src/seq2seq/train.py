@@ -49,14 +49,29 @@ def lr_at(epoch_float: float, base_lr: float, const_epochs: float, halve_every: 
 
 
 def load_prepared(data_dir: Path):
+    """Load vocabularies and encoded splits.
+
+    Prefers the compact .npz form; if only the JSON exists it converts once and
+    caches the .npz beside it. The JSON parses into Python int objects (~1 GB for
+    the 500k-pair training set) which the OS then pages out under memory
+    pressure; the .npz is int32 and stays resident.
+    """
     src_vocab = Vocab.load(data_dir / "vocab.src.json")
     tgt_vocab = Vocab.load(data_dir / "vocab.tgt.json")
     splits = {}
     for split in ("train", "dev", "test"):
-        path = data_dir / f"{split}.ids.json"
-        if path.exists():
-            obj = json.loads(path.read_text())
-            splits[split] = ParallelDataset(obj["src"], obj["tgt"])
+        npz, js = data_dir / f"{split}.npz", data_dir / f"{split}.ids.json"
+        if npz.exists():
+            splits[split] = ParallelDataset.load_npz(npz)
+        elif js.exists():
+            obj = json.loads(js.read_text())
+            ds = ParallelDataset(obj["src"], obj["tgt"])
+            del obj
+            try:
+                ds.save_npz(npz)
+            except OSError:
+                pass  # cache is an optimisation, not a requirement
+            splits[split] = ds
     return src_vocab, tgt_vocab, splits
 
 

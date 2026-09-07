@@ -221,3 +221,63 @@ def test_wider_beam_not_worse_under_length_normalisation():
         _, s2 = beam_search(m, src, sv, tv, beam_size=2, reverse_source=True, length_norm=1.0)
         _, s12 = beam_search(m, src, sv, tv, beam_size=12, reverse_source=True, length_norm=1.0)
         assert s12 >= s2 - 1e-5, f"length-normalised B=12 scored worse than B=2 on {src}: {s12} < {s2}"
+
+
+# ------------------------------------------------- compact dataset storage
+
+def test_sequences_round_trip_exactly():
+    from seq2seq.data import Sequences
+
+    raw = [[4, 5, 6], [7], [], [8, 9, 10, 11], [12, 13]]
+    seq = Sequences.from_lists(raw)
+    assert len(seq) == len(raw)
+    assert [seq[i] for i in range(len(raw))] == raw
+    assert seq[1:4] == raw[1:4]
+    assert seq[-1] == raw[-1]
+    assert [seq.length(i) for i in range(len(raw))] == [len(r) for r in raw]
+    assert list(seq) == raw
+
+
+def test_dataset_npz_round_trip(tmp_path):
+    src = [[4, 5, 6], [7, 8], [9]]
+    tgt = [[10, 11], [12], [13, 14, 15]]
+    ds = ParallelDataset(src, tgt)
+    path = tmp_path / "split.npz"
+    ds.save_npz(path)
+    back = ParallelDataset.load_npz(path)
+    assert len(back) == len(ds)
+    assert [back.src_ids[i] for i in range(len(src))] == src
+    assert [back.tgt_ids[i] for i in range(len(tgt))] == tgt
+
+
+def test_collate_is_identical_after_npz_round_trip(tmp_path):
+    """The storage change must not alter a single tensor the model sees."""
+    sv, tv = tiny_vocabs()
+    src = [[4, 5, 6], [7, 8], [9, 10, 11, 12]]
+    tgt = [[13, 14], [15], [16, 17, 18]]
+    fresh = ParallelDataset(src, tgt)
+    path = tmp_path / "rt.npz"
+    fresh.save_npz(path)
+    reloaded = ParallelDataset.load_npz(path)
+
+    for reverse in (False, True):
+        a = collate(fresh, [0, 1, 2], sv, tv, reverse_source=reverse)
+        b = collate(reloaded, [0, 1, 2], sv, tv, reverse_source=reverse)
+        for x, y in zip(a, b):
+            assert torch.equal(x, y), "npz round-trip changed the collated tensors"
+        # and the tensors must still be exactly what the raw lists imply,
+        # up to the row's true length (the rest is padding to the batch max)
+        expected = (list(reversed(src[0])) if reverse else src[0]) + [sv.eos_id]
+        n = int(a[1][0])
+        assert n == len(expected)
+        assert a[0][0][:n].tolist() == expected
+        assert a[0][0][n:].tolist() == [sv.pad_id] * (a[0].size(1) - n)
+
+
+def test_bucketing_matches_true_lengths():
+    """make_batches now sorts on the precomputed length array, not len() calls."""
+    src = [[4] * (i % 30 + 1) for i in range(300)]
+    ds = ParallelDataset(src, [[5] * (i % 30 + 1) for i in range(300)])
+    assert list(ds.src_ids.lengths) == [len(s) for s in src]
+    batches = make_batches(ds, 16, shuffle=True, seed=0)
+    assert sorted(i for b in batches for i in b) == list(range(300))
