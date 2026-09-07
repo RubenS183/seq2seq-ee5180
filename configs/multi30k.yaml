@@ -1,0 +1,26 @@
+# Tier 0 -- Multi30k En->Fr (29k pairs). Pipeline validation + a cheap 3-seed
+# forward-vs-reversed ablation. NOT a reproduction of Table 1 (wrong corpus,
+# wrong test set); the WMT config below is.
+name: multi30k
+data_dir: $WORK/data/multi30k/prepared
+run_dir: $WORK/runs/multi30k
+
+# Model -- scaled further down because 29k pairs cannot support 55M parameters.
+emb_dim: 256
+hidden_dim: 256
+num_layers: 2
+dropout: 0.0          # paper uses none; any non-zero value is a deviation
+init_range: 0.08      # paper sec. 3.4: U(-0.08, 0.08)
+
+# Optimisation -- the paper's recipe, schedule shape preserved.
+lr: 0.7               # plain SGD, no momentum
+batch_size: 128
+grad_clip: 5.0
+epochs: 15
+lr_constant_epochs: 10.0   # paper: 5 of 7.5 (2/3 of training)
+lr_halve_every: 1.0        # gives 5 halvings, as in the paper
+
+reverse_source: true
+seed: 1
+device: auto
+log_every: 50
