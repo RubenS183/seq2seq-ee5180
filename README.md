@@ -123,6 +123,13 @@ make results-wmt
 Training is resumable: every epoch writes `last.pt` atomically, and a rerun of
 the same command picks up where it stopped.
 
+**Do not decode while training.** Both fit individually on a 16 GB machine
+(training peaks around 1.4 GB resident), but running a multi-model beam decode
+alongside a training run pushed this Mac into swap thrashing and slowed training
+**5x** — from 0.49 s/step to over 2.4 s/step. Run `make wmt` to completion, then
+`make results-wmt`. Measured in isolation on the real 500k-pair corpus: 0.49
+s/step, 6,874 target words/s, ~0.53 h/epoch, ~8.5 h for both arms.
+
 **Device note.** Training runs on MPS; **decoding defaults to CPU**. Beam search
 is latency-bound rather than throughput-bound — each step is one sentence × B
 beams — so Metal's per-kernel launch overhead dominates. Measured on the M1 Pro
