@@ -3,7 +3,7 @@ WORK ?= $(HOME)/ee5180-work
 PY   ?= $(WORK)/.venv/bin/python
 export EE5180_WORK = $(WORK)
 
-.PHONY: help setup test data-multi30k data-wmt smoke wmt results-multi30k results-wmt clean-runs
+.PHONY: help setup test data-multi30k data-wmt smoke wmt results-multi30k results-wmt figures report slides submit clean-runs
 
 help:
 	@grep -E '^[a-z0-9-]+:.*?##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/' | column -t -s "$$(printf '\t')"
@@ -57,6 +57,24 @@ results-wmt:        ## decode + score + plot Tier 1 (the submitted table)
 	  --data-dir $(WORK)/data/wmt14/prepared --runs-root $(WORK)/runs/wmt14 \
 	  --out results/wmt14_small --beams 1 2 12 --seeds 1 \
 	  --scale-note "0.5M pairs vs the paper's 12M; 2x512 vs 4x1000; 32k/32k vocab vs 160k/80k; ~8 epochs on one M1 Pro GPU vs 7.5 epochs on 8 GPUs for 10 days. Absolute BLEU is NOT comparable to Table 1 - the direction and shape of the effects are."
+
+figures:            ## regenerate the explanatory figures
+	$(PY) scripts/make_figures.py results/figures
+
+report:             ## rebuild the mid-term report (.md and .pdf) from the results
+	$(PY) scripts/make_report.py
+	$(PY) scripts/md_to_pdf.py report/EE5180_midterm_report.md
+
+slides:             ## rebuild the mid-term slide deck from the results
+	node scripts/make_slides.js
+
+submit:             ## package the repository for submission
+	$(PY) scripts/make_report.py && $(PY) scripts/md_to_pdf.py report/EE5180_midterm_report.md
+	node scripts/make_slides.js
+	rm -f EE5180_seq2seq_submission.zip
+	zip -qr EE5180_seq2seq_submission.zip . \
+	  -x '*.git/*' '*__pycache__/*' '*.pytest_cache/*' '*.DS_Store' '*.pt' 'EE5180_seq2seq_submission.zip'
+	@echo "wrote EE5180_seq2seq_submission.zip ($$(du -h EE5180_seq2seq_submission.zip | cut -f1))"
 
 clean-runs:
 	rm -rf $(WORK)/runs
