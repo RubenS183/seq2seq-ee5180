@@ -134,9 +134,15 @@ reversal ablation.
 | Single forward LSTM | 1 | **3.28** | 3.24 | 14.352 | — |
 | Single forward LSTM | 2 | **3.52** | 3.48 | 14.352 | — |
 | Single forward LSTM | 12 | **3.75** | 3.55 | 14.352 | — |
+| Ensemble of 3 forward LSTM | 1 | **4.12** | 4.08 | — | — |
+| Ensemble of 3 forward LSTM | 2 | **5.02** | 4.99 | — | — |
+| Ensemble of 3 forward LSTM | 12 | **4.57** | 4.29 | — | — |
 | Single reversed LSTM | 1 | **15.87** | 15.42 | 8.934 | — |
 | Single reversed LSTM | 2 | **16.01** | 15.61 | 8.934 | — |
 | Single reversed LSTM | 12 | **16.02** | 15.56 | 8.934 | — |
+| Ensemble of 3 reversed LSTM | 1 | **18.56** | 18.05 | — | — |
+| Ensemble of 3 reversed LSTM | 2 | **18.69** | 18.22 | — | — |
+| Ensemble of 3 reversed LSTM | 12 | **18.58** | 18.08 | — | — |
 
 Reversal moves tokenized BLEU **3.75 → 16.02** and test
 perplexity **14.35 → 8.93** at beam 12. The effect is

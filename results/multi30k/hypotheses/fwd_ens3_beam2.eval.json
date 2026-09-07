@@ -14,7 +14,7 @@
   "test_ppl": null,
   "sig_tok": "nrefs:1|case:mixed|eff:no|tok:none|smooth:exp|version:2.6.0",
   "sig_detok": "nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0",
-  "decode_seconds": 67.3,
+  "decode_seconds": 58.1,
   "bleu_by_length": [
     {
       "bucket": "1-10",

@@ -1,0 +1,9 @@
+# Pinned to what was actually used for the reported runs (macOS/arm64, Python 3.12.13)
+torch==2.14.0
+sacrebleu==2.6.0
+sacremoses==0.2.0
+matplotlib==3.11.0
+numpy==2.5.3
+tqdm==4.70.0
+pyyaml==6.0.3
+pytest==9.1.1
