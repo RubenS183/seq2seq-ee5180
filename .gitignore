@@ -7,3 +7,7 @@ runs/
 *.ckpt
 .DS_Store
 .pytest_cache/
+
+# Staging copies / build artifacts that must never be committed into the repo
+EE5180_seq2seq_submission/
+EE5180_seq2seq_submission.zip

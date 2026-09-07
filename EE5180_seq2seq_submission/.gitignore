@@ -1,9 +1,0 @@
-__pycache__/
-*.pyc
-.venv/
-data/
-runs/
-*.pt
-*.ckpt
-.DS_Store
-.pytest_cache/
