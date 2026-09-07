@@ -62,6 +62,7 @@ def load_prepared(data_dir: Path):
 
 @torch.no_grad()
 def evaluate_perplexity(model, dataset, src_vocab, tgt_vocab, reverse_source, device, batch_size=128):
+    was_training = model.training
     model.eval()
     criterion = nn.CrossEntropyLoss(ignore_index=tgt_vocab.pad_id, reduction="sum")
     total_nll, total_tokens = 0.0, 0
@@ -72,7 +73,7 @@ def evaluate_perplexity(model, dataset, src_vocab, tgt_vocab, reverse_source, de
         logits = model(src, src_len, tgt_in)
         total_nll += criterion(logits.reshape(-1, logits.size(-1)), tgt_out.reshape(-1)).item()
         total_tokens += int((tgt_out != tgt_vocab.pad_id).sum())
-    model.train()
+    model.train(was_training)  # restore, rather than assuming we came from training
     return math.exp(total_nll / max(total_tokens, 1)), total_nll, total_tokens
 
 

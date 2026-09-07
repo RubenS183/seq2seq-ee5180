@@ -363,9 +363,23 @@ function table(s, head, rows, opt = {}) {
     x: M, y: 1.88, w: W - 2 * M, h: 0.8, isTextBox: true, margin: 0,
     fontFace: HEAD_FONT, fontSize: 32, bold: true, color: PAPER,
   });
-  s.addText("A twelve-word sentence and a fifty-word sentence are compressed into the same 2048 numbers before a single target word is emitted. That is the bottleneck — and it is why our BLEU falls away on long sentences.", {
-    x: M, y: 2.8, w: 11.5, h: 0.9, isTextBox: true, margin: 0,
-    fontFace: BODY_FONT, fontSize: 16, color: "CADCFC",
+  // Phrase the long-sentence claim from the measured curve rather than asserting it.
+  const lenSrc = (wmt.length ? wmt : m30);
+  const lenRow = lenSrc.filter(r => r.reverse_source && r.bleu_by_length && r.bleu_by_length.length >= 2)
+                       .sort((a, b) => b.beam_size - a.beam_size)[0];
+  let lenClause = "";
+  if (lenRow) {
+    const b = lenRow.bleu_by_length;
+    const first = b[0], last = b[b.length - 1];
+    const drop = first.bleu_tok - last.bleu_tok;
+    const corpus = wmt.length ? "on ntst14" : "on Multi30k";
+    lenClause = drop > 1
+      ? ` In our runs ${corpus}, reversed-model BLEU falls from ${first.bleu_tok.toFixed(1)} on ${first.bucket}-token sources to ${last.bleu_tok.toFixed(1)} on ${last.bucket} — the paper, at full scale, reported no such degradation.`
+      : ` In our runs ${corpus}, BLEU holds up across length buckets (${first.bleu_tok.toFixed(1)} → ${last.bleu_tok.toFixed(1)}), matching the paper's own finding.`;
+  }
+  s.addText("A twelve-word sentence and a fifty-word sentence are compressed into the same 2048 numbers before a single target word is emitted. That is the bottleneck." + lenClause, {
+    x: M, y: 2.75, w: 12.0, h: 1.15, isTextBox: true, margin: 0,
+    fontFace: BODY_FONT, fontSize: 15, color: "CADCFC",
   });
   const steps = [["Quantify", "BLEU and perplexity by source-length bucket; probe encoder-state saturation."],
                  ["Fix", "Implement Bahdanau attention on this same codebase; rerun the identical grid."],
