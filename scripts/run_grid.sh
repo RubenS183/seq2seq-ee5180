@@ -6,7 +6,11 @@ set -euo pipefail
 CONFIG="${1:?usage: run_grid.sh <config.yaml> [seeds...]}"; shift
 SEEDS=("${@:-1}")
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PY="${EE5180_PY:-$HOME/ee5180-work/.venv/bin/python}"
+# Python to use: EE5180_PY if set, else the local venv, else whatever python3 is
+# on PATH (which is the case on Colab/Kaggle).
+if [ -n "${EE5180_PY:-}" ]; then PY="$EE5180_PY"
+elif [ -x "$HOME/ee5180-work/.venv/bin/python" ]; then PY="$HOME/ee5180-work/.venv/bin/python"
+else PY="$(command -v python3)"; fi
 cd "$REPO"
 for seed in "${SEEDS[@]}"; do
   for dir in rev fwd; do

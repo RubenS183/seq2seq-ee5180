@@ -11,7 +11,11 @@
 #        Fetched through sacrebleu so the exact official set is used.
 set -euo pipefail
 WORK="${EE5180_WORK:-$HOME/ee5180-work}"
-PY="${EE5180_PY:-$HOME/ee5180-work/.venv/bin/python}"
+# Python to use: EE5180_PY if set, else the local venv, else whatever python3 is
+# on PATH (which is the case on Colab/Kaggle).
+if [ -n "${EE5180_PY:-}" ]; then PY="$EE5180_PY"
+elif [ -x "$HOME/ee5180-work/.venv/bin/python" ]; then PY="$HOME/ee5180-work/.venv/bin/python"
+else PY="$(command -v python3)"; fi
 RAW="$WORK/data/wmt14/raw"; DL="$WORK/data/wmt14/download"
 mkdir -p "$RAW" "$DL"
 

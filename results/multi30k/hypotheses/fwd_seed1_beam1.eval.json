@@ -12,7 +12,7 @@
   "test_ppl": 14.352,
   "sig_tok": "nrefs:1|case:mixed|eff:no|tok:none|smooth:exp|version:2.6.0",
   "sig_detok": "nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0",
-  "decode_seconds": 12.4,
+  "decode_seconds": 8.5,
   "bleu_by_length": [
     {
       "bucket": "1-10",
