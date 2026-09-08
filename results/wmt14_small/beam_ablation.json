@@ -1,0 +1,74 @@
+[
+  {
+    "ranking": "raw log-probability (paper's setting)",
+    "beam": 1,
+    "bleu": 6.41,
+    "bp": 0.979,
+    "len_ratio": 0.979,
+    "p1": 36.07,
+    "p4": 1.44,
+    "words": 79504,
+    "unk": 12511,
+    "unk_pct": 15.7
+  },
+  {
+    "ranking": "raw log-probability (paper's setting)",
+    "beam": 2,
+    "bleu": 6.82,
+    "bp": 0.966,
+    "len_ratio": 0.967,
+    "p1": 36.39,
+    "p4": 1.69,
+    "words": 78491,
+    "unk": 12040,
+    "unk_pct": 15.3
+  },
+  {
+    "ranking": "raw log-probability (paper's setting)",
+    "beam": 12,
+    "bleu": 6.6,
+    "bp": 0.943,
+    "len_ratio": 0.945,
+    "p1": 34.75,
+    "p4": 1.75,
+    "words": 76716,
+    "unk": 12176,
+    "unk_pct": 15.9
+  },
+  {
+    "ranking": "length-normalised (alpha=1)",
+    "beam": 1,
+    "bleu": 6.41,
+    "bp": 0.979,
+    "len_ratio": 0.979,
+    "p1": 36.07,
+    "p4": 1.44,
+    "words": 79504,
+    "unk": 12511,
+    "unk_pct": 15.7
+  },
+  {
+    "ranking": "length-normalised (alpha=1)",
+    "beam": 2,
+    "bleu": 6.82,
+    "bp": 1.0,
+    "len_ratio": 1.024,
+    "p1": 35.07,
+    "p4": 1.63,
+    "words": 83155,
+    "unk": 12833,
+    "unk_pct": 15.4
+  },
+  {
+    "ranking": "length-normalised (alpha=1)",
+    "beam": 12,
+    "bleu": 6.07,
+    "bp": 1.0,
+    "len_ratio": 1.143,
+    "p1": 30.74,
+    "p4": 1.49,
+    "words": 92815,
+    "unk": 13758,
+    "unk_pct": 14.8
+  }
+]

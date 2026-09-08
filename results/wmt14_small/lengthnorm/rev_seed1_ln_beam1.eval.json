@@ -1,0 +1,46 @@
+{
+  "checkpoints": [
+    "/Users/rubenstalin/ee5180-work/runs/wmt14/rev_seed1/best.pt"
+  ],
+  "n_models": 1,
+  "beam_size": 1,
+  "reverse_source": true,
+  "length_norm": 1.0,
+  "n_sentences": 3003,
+  "bleu_tok": 6.41,
+  "bleu_detok": 4.46,
+  "test_ppl": 24.504,
+  "sig_tok": "nrefs:1|case:mixed|eff:no|tok:none|smooth:exp|version:2.6.0",
+  "sig_detok": "nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0",
+  "decode_seconds": 318.0,
+  "bleu_by_length": [
+    {
+      "bucket": "1-10",
+      "n": 405,
+      "bleu_tok": 8.06604628926591
+    },
+    {
+      "bucket": "11-20",
+      "n": 954,
+      "bleu_tok": 8.656118058485433
+    },
+    {
+      "bucket": "21-30",
+      "n": 832,
+      "bleu_tok": 7.065229359959327
+    },
+    {
+      "bucket": "31-40",
+      "n": 535,
+      "bleu_tok": 5.175879363003554
+    },
+    {
+      "bucket": "41-inf",
+      "n": 277,
+      "bleu_tok": 3.9073875047460636
+    }
+  ],
+  "dev_ppl_at_checkpoint": [
+    23.79070533955156
+  ]
+}

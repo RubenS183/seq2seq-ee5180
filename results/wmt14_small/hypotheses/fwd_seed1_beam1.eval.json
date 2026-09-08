@@ -1,0 +1,46 @@
+{
+  "checkpoints": [
+    "/Users/rubenstalin/ee5180-work/runs/wmt14/fwd_seed1/best.pt"
+  ],
+  "n_models": 1,
+  "beam_size": 1,
+  "reverse_source": false,
+  "length_norm": 0.0,
+  "n_sentences": 3003,
+  "bleu_tok": 4.05,
+  "bleu_detok": 2.68,
+  "test_ppl": 32.888,
+  "sig_tok": "nrefs:1|case:mixed|eff:no|tok:none|smooth:exp|version:2.6.0",
+  "sig_detok": "nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0",
+  "decode_seconds": 316.2,
+  "bleu_by_length": [
+    {
+      "bucket": "1-10",
+      "n": 405,
+      "bleu_tok": 5.870778738737335
+    },
+    {
+      "bucket": "11-20",
+      "n": 954,
+      "bleu_tok": 5.4828845408002955
+    },
+    {
+      "bucket": "21-30",
+      "n": 832,
+      "bleu_tok": 4.366917143060105
+    },
+    {
+      "bucket": "31-40",
+      "n": 535,
+      "bleu_tok": 3.3267904099774053
+    },
+    {
+      "bucket": "41-inf",
+      "n": 277,
+      "bleu_tok": 2.1636875430370712
+    }
+  ],
+  "dev_ppl_at_checkpoint": [
+    30.051642394038307
+  ]
+}

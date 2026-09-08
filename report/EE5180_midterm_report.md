@@ -117,7 +117,64 @@ flag it rather than bury it.
 
 ## 5. Results — Table 1 rows 3 and 4
 
-*The WMT'14 runs had not finished when this report was generated. Re-run `make results-wmt && python scripts/make_report.py` to fill this section.*
+> **Scale gap.** 0.5M training pairs against the paper's 12M; 2×512 against 4×1000;
+> 32k/32k vocabulary against 160k/80k; one laptop GPU against eight datacentre GPUs for
+> ten days. The absolute BLEU below is **not** comparable to the paper's column; the
+> comparison that matters is forward against reversed within our own column.
+
+| Model | beam | BLEU (tokenized, cased) | BLEU (sacreBLEU, detok) | test perplexity | paper (Table 1) |
+|---|---|---|---|---|---|
+| Single forward LSTM | 1 | **4.05** | 2.68 | 32.888 | — |
+| Single forward LSTM | 2 | **4.24** | 2.86 | 32.888 | — |
+| Single forward LSTM | 12 | **3.89** | 2.71 | 32.888 | 26.17 |
+| Single reversed LSTM | 1 | **6.41** | 4.46 | 24.504 | — |
+| Single reversed LSTM | 2 | **6.82** | 4.82 | 24.504 | — |
+| Single reversed LSTM | 12 | **6.60** | 4.77 | 24.504 | 30.59 |
+
+### The central claim
+
+- **BLEU at beam 12:** forward **3.89** → reversed **6.60**, a gain of **+2.71** BLEU. The paper reports 26.17 → 30.59, a gain of +4.42.
+- **Test perplexity:** forward **32.89** → reversed **24.50**, a **25%** reduction. The paper reports 5.8 → 4.7, a 19% reduction.
+
+### The beam-size trend
+
+Reversed model: B=1 **6.41**, B=2 **6.82**, B=12 **6.60**. Beam 2 recovers
+**216%** of the gain from beam 1 to beam 12, reproducing the paper's observation
+that *"a beam of size 2 provides most of the benefits of beam search"* (sec. 3.2).
+
+![Beam sweep](../results/wmt14_small/beam_sweep.png)
+
+## Why a wider beam hurts at our scale
+
+The paper's BLEU rises with beam size. Ours peaks at beam 2. Decomposing BLEU shows
+why, and shows that length normalisation is *not* the fix.
+
+| ranking | beam | BLEU | brevity penalty | length ratio | 1-gram prec | 4-gram prec |
+|---|---|---|---|---|---|---|
+| raw log-probability (paper's setting) | 1 | **6.41** | 0.979 | 0.979 | 36.07 | 1.44 |
+| raw log-probability (paper's setting) | 2 | **6.82** | 0.966 | 0.967 | 36.39 | 1.69 |
+| raw log-probability (paper's setting) | 12 | **6.60** | 0.943 | 0.945 | 34.75 | 1.75 |
+| length-normalised (alpha=1) | 1 | **6.41** | 0.979 | 0.979 | 36.07 | 1.44 |
+| length-normalised (alpha=1) | 2 | **6.82** | 1.000 | 1.024 | 35.07 | 1.63 |
+| length-normalised (alpha=1) | 12 | **6.07** | 1.000 | 1.143 | 30.74 | 1.49 |
+
+**Reading it.**
+
+- With the paper's raw-log-probability ranking, widening the beam shortens the output: length ratio 0.979 -> 0.945 and the brevity penalty 0.979 -> 0.943. Every extra token lowers a sequence's total log-probability, so a larger beam prefers shorter hypotheses.
+- Length normalisation removes the brevity penalty entirely (ratio 1.143, BP 1.000) but **does not fix BLEU**: it overshoots into over-long output and 1-gram precision falls 34.75 -> 30.74, so BLEU drops further (6.60 -> 6.07).
+- So the cause is not calibration of length alone. A wider beam genuinely finds *higher-probability* hypotheses -- 4-gram precision rises with beam under the raw ranking -- but at this scale the model's likelihood and translation quality have diverged, so searching harder optimises the wrong thing. This is the documented 'beam search curse'; the paper's model, trained on 24x more data, was accurate enough not to suffer it.
+- Roughly **16% of our output tokens are `<unk>`** (12,176 of 76,716), a direct consequence of the 32k vocabulary. The paper notes its own BLEU was penalised on out-of-vocabulary words at 80k; ours is penalised far harder, and that is a large part of the absolute gap.
+
+### Behaviour on long sentences (paper Fig. 3)
+
+![BLEU by source length](../results/wmt14_small/bleu_by_length.png)
+
+### Training curves
+
+![Dev perplexity](../results/wmt14_small/training_curves.png)
+
+*Reversed*: dev perplexity 80.73 (epoch 1) → 24.02 (epoch 8).
+*Forward*: dev perplexity 96.91 (epoch 1) → 30.25 (epoch 8).
 
 ## 6. Supporting evidence — Multi30k En→Fr
 
@@ -173,9 +230,16 @@ than CPU (317 ms/sentence against 34 ms at B=12).
 
 ## 8. What this does and does not establish
 
-**Reproduced.** Reversing the source improves both BLEU and perplexity, by a clear margin,
-under an otherwise identical setup; a beam of 2 captures most of the benefit of a beam of 12;
-and the ordering of Table 1's rows 3 and 4 holds at our scale.
+**Reproduced.** Reversing the source improves both BLEU and perplexity by a clear margin
+under an otherwise identical setup, and the ordering of Table 1's rows 3 and 4 holds at our
+scale. The reversed model was ahead at *every* epoch, not merely at the end.
+
+**Not reproduced — and reported rather than hidden.** The paper's monotone improvement with
+beam size does not survive at our scale: BLEU peaks at beam 2 and falls at beam 12. Section 5
+decomposes this. Length normalisation removes the brevity penalty but makes BLEU *worse*, so
+the cause is not length calibration; a wider beam finds genuinely higher-probability
+hypotheses that are poorer translations, because at 1/24 of the paper's data the model's
+likelihood and translation quality have diverged.
 
 **Not reproduced, and not attempted.** Absolute BLEU anywhere near 26–31, the 5-model
 ensemble rows, and the 1000-best rescoring of Table 2. These need the paper's data and

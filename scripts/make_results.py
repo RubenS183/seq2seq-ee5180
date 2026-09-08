@@ -48,6 +48,9 @@ def main():
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--device", default="cpu")  # see evaluate.py: 9x faster than MPS for beam search
     ap.add_argument("--scale-note", default="")
+    ap.add_argument("--rebuild-md", action="store_true",
+                    help="rewrite results.md and the figures from all_results.json, "
+                         "without decoding again (decoding the full test set takes ~30 min)")
     args = ap.parse_args()
 
     data_dir = Path(args.data_dir).expanduser()
@@ -57,7 +60,13 @@ def main():
     hyp_dir = out / "hypotheses"
 
     results = []
-    for direction, reverse in (("fwd", False), ("rev", True)):
+    cached = out / "all_results.json"
+    if args.rebuild_md:
+        if not cached.exists():
+            sys.exit(f"--rebuild-md needs {cached}; run without it first.")
+        results = json.loads(cached.read_text())
+        print(f"[rebuild-md] {len(results)} cached rows, no decoding")
+    for direction, reverse in ([] if args.rebuild_md else (("fwd", False), ("rev", True))):
         ckpts = [runs_root / f"{direction}_seed{s}" / "best.pt" for s in args.seeds]
         present = [c for c in ckpts if c.exists()]
         if not present:
@@ -79,7 +88,8 @@ def main():
                 results.append(res)
                 print(f"  {direction} beam={beam:>2} ens{len(present)} -> BLEU_tok {res['bleu_tok']:.2f}", flush=True)
 
-    (out / "all_results.json").write_text(json.dumps(results, indent=2))
+    if not args.rebuild_md:
+        (out / "all_results.json").write_text(json.dumps(results, indent=2))
 
     # ---- CSV -------------------------------------------------------------
     with (out / "table1_reproduction.csv").open("w", newline="") as fh:
@@ -121,11 +131,26 @@ def main():
                   f"(**{r12['bleu_tok'] - f12['bleu_tok']:+.2f}**); paper 26.17 -> 30.59 (+4.42).",
                   f"- Test perplexity: forward **{f12['test_ppl']}** -> reversed **{r12['test_ppl']}**; "
                   f"paper 5.8 -> 4.7."]
-    if ("rev", 2) in single and ("rev", 12) in single and ("rev", 1) in single:
+    if all(("rev", b) in single for b in (1, 2, 12)):
         b1, b2, b12 = (single[("rev", b)]["bleu_tok"] for b in (1, 2, 12))
-        frac = (b2 - b1) / (b12 - b1) * 100 if abs(b12 - b1) > 1e-9 else float("nan")
-        lines += [f"- Beam: B=1 {b1:.2f}, B=2 {b2:.2f}, B=12 {b12:.2f} - "
-                  f"B=2 recovers {frac:.0f}% of the B=1 -> B=12 gain."]
+        head = f"- Beam: B=1 {b1:.2f}, B=2 {b2:.2f}, B=12 {b12:.2f} - "
+        if b12 > b2 > b1:
+            # The paper's ordering: report how much of the gain B=2 captures.
+            frac = (b2 - b1) / (b12 - b1) * 100
+            lines.append(head + f"B=2 recovers {frac:.0f}% of the B=1 -> B=12 gain, "
+                                "as in the paper (sec. 3.2).")
+        elif b12 < b2:
+            # Non-monotone: a percentage "recovered" would be meaningless (and
+            # can exceed 100%), so describe what actually happened instead.
+            lines.append(head + f"BLEU peaks at B=2 and falls by {b2 - b12:.2f} at B=12, so the "
+                                "paper's monotone beam trend does NOT reproduce at our scale. "
+                                "A wider beam does find higher-probability hypotheses, but they "
+                                "are worse translations. Length normalisation removes the brevity "
+                                "penalty and makes BLEU worse still, so brevity is a symptom "
+                                "rather than the cause - see beam_ablation.md for the "
+                                "decomposition.")
+        else:
+            lines.append(head + "the ordering is non-monotone; see the per-beam figures.")
     lines += ["", "## Figures", "",
               "![BLEU by source length](bleu_by_length.png)", "",
               "![Beam sweep](beam_sweep.png)", "",
