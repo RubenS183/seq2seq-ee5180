@@ -213,6 +213,7 @@ def collate(
     tgt_vocab: Vocab,
     reverse_source: bool,
     device: torch.device | None = None,
+    pad_multiple: int = 8,
 ):
     """Build padded tensors for one minibatch.
 
@@ -231,6 +232,16 @@ def collate(
     bsz = len(indices)
     smax = max(len(s) for s in srcs)
     tmax = max(len(t) for t in tgts) + 1  # +1 for <sos> / <eos>
+
+    # Round the padded lengths up to a multiple. Length bucketing otherwise
+    # yields dozens of distinct tensor shapes per epoch, and Metal's caching
+    # allocator keeps a block per shape, so memory creeps up until the machine
+    # swaps. Quantising the shapes bounds that. Purely padding: the encoder is
+    # packed by true length and the extra target positions are pad_id, which
+    # the loss ignores.
+    if pad_multiple > 1:
+        smax = -(-smax // pad_multiple) * pad_multiple
+        tmax = -(-tmax // pad_multiple) * pad_multiple
 
     src = torch.full((bsz, smax), src_vocab.pad_id, dtype=torch.long)
     src_len = torch.empty(bsz, dtype=torch.long)

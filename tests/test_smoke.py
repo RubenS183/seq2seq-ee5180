@@ -42,8 +42,8 @@ def test_init_range_is_the_papers():
 def test_reversal_reverses_source_only_and_keeps_eos_last():
     sv, tv = tiny_vocabs()
     ds = ParallelDataset([[4, 5, 6]], [[7, 8]])
-    fwd = collate(ds, [0], sv, tv, reverse_source=False)
-    rev = collate(ds, [0], sv, tv, reverse_source=True)
+    fwd = collate(ds, [0], sv, tv, reverse_source=False, pad_multiple=1)
+    rev = collate(ds, [0], sv, tv, reverse_source=True, pad_multiple=1)
     assert fwd[0][0].tolist() == [4, 5, 6, sv.eos_id]
     assert rev[0][0].tolist() == [6, 5, 4, sv.eos_id]      # words reversed, <eos> still last
     assert fwd[3][0].tolist() == rev[3][0].tolist()        # target untouched
@@ -52,9 +52,39 @@ def test_reversal_reverses_source_only_and_keeps_eos_last():
 def test_collate_targets_are_shifted_by_one():
     sv, tv = tiny_vocabs()
     ds = ParallelDataset([[4, 5]], [[7, 8, 9]])
-    _, _, tgt_in, tgt_out = collate(ds, [0], sv, tv, reverse_source=False)
+    _, _, tgt_in, tgt_out = collate(ds, [0], sv, tv, reverse_source=False, pad_multiple=1)
     assert tgt_in[0].tolist() == [tv.sos_id, 7, 8, 9]
     assert tgt_out[0].tolist() == [7, 8, 9, tv.eos_id]
+
+
+def test_shape_quantisation_pads_only_and_changes_no_loss():
+    """Rounding padded lengths up to a multiple must be inert.
+
+    Shapes get bigger, the content up to the true length is identical, and the
+    loss is unchanged because the extra target positions are pad_id (ignored)
+    and the encoder is packed by true length.
+    """
+    from seq2seq.losses import chunked_ce_loss
+
+    m, sv, tv = tiny_model(seed=31)
+    ds = ParallelDataset([[4, 5, 6], [7, 8]], [[9, 10], [11, 12, 13]])
+
+    exact = collate(ds, [0, 1], sv, tv, reverse_source=True, pad_multiple=1)
+    padded = collate(ds, [0, 1], sv, tv, reverse_source=True, pad_multiple=8)
+
+    assert padded[0].size(1) % 8 == 0 and padded[2].size(1) % 8 == 0
+    assert padded[0].size(1) >= exact[0].size(1)
+    assert torch.equal(exact[1], padded[1])                     # true lengths identical
+    n = exact[0].size(1)
+    assert torch.equal(exact[0], padded[0][:, :n])              # same content
+    assert (padded[0][:, n:] == sv.pad_id).all()                # remainder is padding
+
+    with torch.no_grad():
+        losses = []
+        for src, src_len, tgt_in, tgt_out in (exact, padded):
+            h = m.forward_hidden(src, src_len, tgt_in)
+            losses.append(chunked_ce_loss(h, m.decoder.out, tgt_out, tv.pad_id, 0).item())
+    assert abs(losses[0] - losses[1]) < 1e-4, f"padding changed the loss: {losses}"
 
 
 def test_length_bucketing_groups_similar_lengths():

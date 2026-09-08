@@ -125,6 +125,7 @@ def train(cfg: dict) -> Path:
     # Chunked, checkpointed loss: the 32k-vocabulary logits tensor is the memory
     # bottleneck (128 x 51 x 32000 x 4B = 836 MB). 0 disables it.
     loss_chunk = int(cfg.get("loss_chunk_size", 0))
+    empty_cache_every = int(cfg.get("empty_cache_every", 200))
 
     start_epoch, best_ppl = 0, float("inf")
     last_ckpt = run_dir / "last.pt"
@@ -171,6 +172,15 @@ def train(cfg: dict) -> Path:
 
             running_nll += nll.item()
             running_tokens += int((tgt_out != tgt_vocab.pad_id).sum())
+
+            # Release cached allocator blocks periodically. Without this the
+            # process grows until the OS starts swapping and throughput
+            # collapses (observed: 7000 -> under 1000 target words/s).
+            if empty_cache_every and step and step % empty_cache_every == 0:
+                if device.type == "mps":
+                    torch.mps.empty_cache()
+                elif device.type == "cuda":
+                    torch.cuda.empty_cache()
 
             if step % cfg.get("log_every", 100) == 0:
                 elapsed = max(time.time() - t0, 1e-9)
