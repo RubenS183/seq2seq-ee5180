@@ -281,3 +281,50 @@ def test_bucketing_matches_true_lengths():
     assert list(ds.src_ids.lengths) == [len(s) for s in src]
     batches = make_batches(ds, 16, shuffle=True, seed=0)
     assert sorted(i for b in batches for i in b) == list(range(300))
+
+
+# ------------------------------------------- chunked, checkpointed CE loss
+
+def test_chunked_loss_matches_unchunked_value_and_gradients():
+    """The memory optimisation must not change the mathematics.
+
+    Same loss and same gradients as computing the full logits tensor at once.
+    """
+    from seq2seq.losses import chunked_ce_loss
+
+    torch.manual_seed(21)
+    m, sv, tv = tiny_model(seed=21)
+    ds = ParallelDataset([[4, 5, 6, 7], [8, 9], [10, 11, 12]],
+                         [[13, 14, 15], [16], [17, 18, 19, 20]])
+    src, src_len, tgt_in, tgt_out = collate(ds, [0, 1, 2], sv, tv, reverse_source=True)
+
+    def grads_for(chunk):
+        m.zero_grad(set_to_none=True)
+        hidden = m.forward_hidden(src, src_len, tgt_in)
+        loss = chunked_ce_loss(hidden, m.decoder.out, tgt_out, tv.pad_id, chunk)
+        loss.backward()
+        g = torch.cat([p.grad.flatten().clone() for p in m.parameters() if p.grad is not None])
+        return loss.item(), g
+
+    full, g_full = grads_for(0)
+    for chunk in (1, 2, 3, 8):
+        chunked, g_chunk = grads_for(chunk)
+        assert abs(full - chunked) < 1e-4, f"chunk={chunk}: loss {full} vs {chunked}"
+        assert (g_full - g_chunk).abs().max() < 1e-5, f"chunk={chunk}: gradient mismatch"
+
+
+def test_chunked_loss_matches_plain_cross_entropy():
+    """And both agree with torch's own cross_entropy on the full logits."""
+    from seq2seq.losses import chunked_ce_loss
+
+    m, sv, tv = tiny_model(seed=23)
+    ds = ParallelDataset([[4, 5, 6]], [[7, 8, 9]])
+    src, src_len, tgt_in, tgt_out = collate(ds, [0], sv, tv, reverse_source=False)
+    with torch.no_grad():
+        logits = m(src, src_len, tgt_in)
+        reference = torch.nn.functional.cross_entropy(
+            logits.reshape(-1, logits.size(-1)), tgt_out.reshape(-1),
+            ignore_index=tv.pad_id, reduction="sum")
+        hidden = m.forward_hidden(src, src_len, tgt_in)
+        got = chunked_ce_loss(hidden, m.decoder.out, tgt_out, tv.pad_id, 2)
+    assert torch.allclose(reference, got, atol=1e-5)

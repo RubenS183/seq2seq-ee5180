@@ -28,6 +28,7 @@ import torch.nn as nn
 import yaml
 
 from .data import ParallelDataset, collate, make_batches
+from .losses import chunked_ce_loss
 from .model import build_model
 from .utils import (
     JsonlLogger,
@@ -76,7 +77,8 @@ def load_prepared(data_dir: Path):
 
 
 @torch.no_grad()
-def evaluate_perplexity(model, dataset, src_vocab, tgt_vocab, reverse_source, device, batch_size=128):
+def evaluate_perplexity(model, dataset, src_vocab, tgt_vocab, reverse_source, device,
+                        batch_size=128, loss_chunk=0):
     was_training = model.training
     model.eval()
     criterion = nn.CrossEntropyLoss(ignore_index=tgt_vocab.pad_id, reduction="sum")
@@ -85,8 +87,13 @@ def evaluate_perplexity(model, dataset, src_vocab, tgt_vocab, reverse_source, de
         src, src_len, tgt_in, tgt_out = collate(
             dataset, batch, src_vocab, tgt_vocab, reverse_source, device
         )
-        logits = model(src, src_len, tgt_in)
-        total_nll += criterion(logits.reshape(-1, logits.size(-1)), tgt_out.reshape(-1)).item()
+        if loss_chunk:
+            hidden = model.forward_hidden(src, src_len, tgt_in)
+            total_nll += chunked_ce_loss(hidden, model.decoder.out, tgt_out,
+                                         tgt_vocab.pad_id, loss_chunk).item()
+        else:
+            logits = model(src, src_len, tgt_in)
+            total_nll += criterion(logits.reshape(-1, logits.size(-1)), tgt_out.reshape(-1)).item()
         total_tokens += int((tgt_out != tgt_vocab.pad_id).sum())
     model.train(was_training)  # restore, rather than assuming we came from training
     return math.exp(total_nll / max(total_tokens, 1)), total_nll, total_tokens
@@ -115,6 +122,9 @@ def train(cfg: dict) -> Path:
     batch_size = cfg["batch_size"]
     clip = cfg.get("grad_clip", 5.0)
     reverse = bool(cfg["reverse_source"])
+    # Chunked, checkpointed loss: the 32k-vocabulary logits tensor is the memory
+    # bottleneck (128 x 51 x 32000 x 4B = 836 MB). 0 disables it.
+    loss_chunk = int(cfg.get("loss_chunk_size", 0))
 
     start_epoch, best_ppl = 0, float("inf")
     last_ckpt = run_dir / "last.pt"
@@ -127,7 +137,8 @@ def train(cfg: dict) -> Path:
         print(f"[resume] from epoch {start_epoch} (best dev ppl {best_ppl:.3f})")
 
     print(
-        f"[setup] device={device} reverse_source={reverse} params={model.count_parameters()/1e6:.1f}M "
+        f"[setup] device={device} reverse_source={reverse} loss_chunk={loss_chunk or 'off'} "
+        f"params={model.count_parameters()/1e6:.1f}M "
         f"| train={len(train_ds)} dev={len(dev_ds)} | src_vocab={len(src_vocab)} tgt_vocab={len(tgt_vocab)}"
     )
 
@@ -144,8 +155,13 @@ def train(cfg: dict) -> Path:
             src, src_len, tgt_in, tgt_out = collate(
                 train_ds, batch, src_vocab, tgt_vocab, reverse, device
             )
-            logits = model(src, src_len, tgt_in)
-            nll = criterion(logits.reshape(-1, logits.size(-1)), tgt_out.reshape(-1))
+            if loss_chunk:
+                hidden = model.forward_hidden(src, src_len, tgt_in)
+                nll = chunked_ce_loss(hidden, model.decoder.out, tgt_out,
+                                      tgt_vocab.pad_id, loss_chunk)
+            else:
+                logits = model(src, src_len, tgt_in)
+                nll = criterion(logits.reshape(-1, logits.size(-1)), tgt_out.reshape(-1))
             loss = nll / len(batch)  # paper: gradient divided by the batch size
 
             optimizer.zero_grad(set_to_none=True)
@@ -172,7 +188,7 @@ def train(cfg: dict) -> Path:
 
         train_ppl = math.exp(running_nll / max(running_tokens, 1))
         dev_ppl, _, _ = evaluate_perplexity(
-            model, dev_ds, src_vocab, tgt_vocab, reverse, device, batch_size
+            model, dev_ds, src_vocab, tgt_vocab, reverse, device, batch_size, loss_chunk
         )
         secs = time.time() - t0
         print(f"[epoch {epoch}] train_ppl={train_ppl:.3f} dev_ppl={dev_ppl:.3f} ({secs/60:.1f} min)", flush=True)

@@ -58,9 +58,18 @@ class Decoder(nn.Module):
         self.out = nn.Linear(hidden_dim, vocab_size)
 
     def forward(self, tgt_in, state):
-        emb = self.embedding(tgt_in)
-        output, state = self.rnn(emb, state)
+        output, state = self.hidden(tgt_in, state)
         return self.out(output), state
+
+    def hidden(self, tgt_in, state):
+        """Decoder states BEFORE the output projection.
+
+        Kept separate so the loss can project in chunks: the projected logits
+        over a 32k vocabulary are the memory bottleneck, not the LSTM itself
+        (see losses.chunked_ce_loss).
+        """
+        emb = self.embedding(tgt_in)
+        return self.rnn(emb, state)
 
 
 class Seq2Seq(nn.Module):
@@ -98,6 +107,12 @@ class Seq2Seq(nn.Module):
         state = self.encoder(src, src_len)
         logits, _ = self.decoder(tgt_in, state)
         return logits
+
+    def forward_hidden(self, src, src_len, tgt_in):
+        """Decoder hidden states, for the chunked loss path."""
+        state = self.encoder(src, src_len)
+        hidden, _ = self.decoder.hidden(tgt_in, state)
+        return hidden
 
     def encode(self, src, src_len):
         return self.encoder(src, src_len)

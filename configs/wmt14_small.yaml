@@ -19,6 +19,11 @@ epochs: 8
 lr_constant_epochs: 5.34   # 2/3 of training, as in the paper
 lr_halve_every: 0.533      # 5 halvings, as in the paper
 
+# Compute the loss in checkpointed chunks over time. The naive 32k softmax
+# needs 836 MB for one logits tensor at batch 128 x 51 tokens; chunking keeps
+# peak memory bounded. Maths is unchanged (tests assert loss+grad equality).
+loss_chunk_size: 8
+
 reverse_source: true
 seed: 1
 device: auto
