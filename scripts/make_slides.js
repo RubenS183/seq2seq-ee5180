@@ -247,9 +247,9 @@ function table(s, head, rows, opt = {}) {
     if (f && r) {
       const dB = (r.bleu_tok - f.bleu_tok).toFixed(2);
       const dP = f.test_ppl && r.test_ppl ? (100 * (f.test_ppl - r.test_ppl) / f.test_ppl).toFixed(0) : null;
-      statCard(s, M, 4.55, 3.9, (dB > 0 ? "+" : "") + dB, "BLEU from reversal alone\n(paper: +4.42)", REV);
-      if (dP) statCard(s, M + 4.25, 4.55, 3.9, dP + "%", "lower test perplexity\n(paper: 19%)", REV);
-      statCard(s, M + 8.5, 4.55, 3.9, "ntst14", "scored on the paper's own\n3003-sentence test set", INK_SOFT);
+      statCard(s, M, 4.55, 3.83, (dB > 0 ? "+" : "") + dB, "BLEU from reversal alone\n(paper: +4.42)", REV);
+      if (dP) statCard(s, M + 4.13, 4.55, 3.83, dP + "%", "lower test perplexity\n(paper: 19%)", REV);
+      statCard(s, M + 8.27, 4.55, 3.83, "ntst14", "scored on the paper's own\n3003-sentence test set", INK_SOFT);
     }
   } else {
     body(s, ["WMT'14 runs still training — regenerate with `make results-wmt && node scripts/make_slides.js`."]);
@@ -267,14 +267,26 @@ function table(s, head, rows, opt = {}) {
   const p2 = has(bl) ? bl : "multi30k/bleu_by_length.png";
   if (has(p1)) s.addImage({ path: fig(p1), x: 0.55, y: 1.7, w: 5.9, h: 3.55 });
   if (has(p2)) s.addImage({ path: fig(p2), x: 6.85, y: 1.7, w: 5.9, h: 3.55 });
-  let line = "Beam 2 recovers most of the benefit of beam 12 — the paper's own observation (sec. 3.2).";
+  let line = "";
   const src = wmt.length ? wmt : m30;
   const b1 = pick(src, "rev", 1), b2 = pick(src, "rev", 2), b12 = pick(src, "rev", 12);
-  if (b1 && b2 && b12 && Math.abs(b12.bleu_tok - b1.bleu_tok) > 1e-9) {
-    const frac = (100 * (b2.bleu_tok - b1.bleu_tok) / (b12.bleu_tok - b1.bleu_tok)).toFixed(0);
-    line = `Beam 2 recovers ${frac}% of the gain from beam 1 to beam 12 — reproducing the paper's observation that "a beam of size 2 provides most of the benefits of beam search".`;
+  if (b1 && b2 && b12) {
+    const [x1, x2, x12] = [b1.bleu_tok, b2.bleu_tok, b12.bleu_tok];
+    if (x12 > x2 && x2 > x1) {
+      const frac = (100 * (x2 - x1) / (x12 - x1)).toFixed(0);
+      line = `Beam 2 recovers ${frac}% of the gain from beam 1 to beam 12, as the paper observes (sec. 3.2).`;
+    } else {
+      // A "% recovered" figure is meaningless when the ordering is not monotone.
+      line = `Beam: ${x1.toFixed(2)} → ${x2.toFixed(2)} → ${x12.toFixed(2)} BLEU. It peaks at beam 2, so the paper's monotone beam gain does NOT reproduce — a wider beam finds likelier but worse translations.`;
+    }
   }
-  s.addText(line, { x: M, y: 5.42, w: W - 2 * M, h: 0.75, isTextBox: true, margin: 0, fontFace: BODY_FONT, fontSize: 14, color: INK_SOFT });
+  const lr = pick(src, "rev", 12), lf = pick(src, "fwd", 12);
+  if (lr && lf && lr.bleu_by_length && lf.bleu_by_length && lr.bleu_by_length.length > 1) {
+    const rb = lr.bleu_by_length, fb = lf.bleu_by_length;
+    const wins = rb.every((b, i) => fb[i] && b.bleu_tok > fb[i].bleu_tok);
+    line += ` Length: reversed ${wins ? "leads in every bucket" : "does not lead everywhere"}, but falls from ${rb[0].bleu_tok.toFixed(1)} to ${rb[rb.length - 1].bleu_tok.toFixed(1)} BLEU on the longest sentences.`;
+  }
+  s.addText(line, { x: M, y: 5.38, w: W - 2 * M, h: 1.0, isTextBox: true, margin: 0, fontFace: BODY_FONT, fontSize: 13.5, color: INK_SOFT });
   note(s, useM30 ? "Shown on Multi30k while the WMT runs finish." : "Right-hand panel is our analogue of the paper's Fig. 3.");
 }
 
@@ -303,7 +315,7 @@ function table(s, head, rows, opt = {}) {
 {
   const s = pres.addSlide();
   titleSlide(s, "Getting it right before spending compute", "ENGINEERING");
-  s.addText("Correctness gates (pytest, ~12 s)", {
+  s.addText("Correctness gates (23 tests, ~3 s)", {
     x: M, y: 1.65, w: 6.0, h: 0.35, isTextBox: true, margin: 0, fontFace: BODY_FONT, fontSize: 16, bold: true, color: INK,
   });
   body(s, [
@@ -332,22 +344,32 @@ function table(s, head, rows, opt = {}) {
 {
   const s = pres.addSlide();
   titleSlide(s, "What this establishes — and what it does not", "VERDICT");
-  s.addShape(pres.ShapeType.roundRect, { x: M, y: 1.75, w: 5.85, h: 3.9, rectRadius: 0.09, fill: { color: "EAF0FA" }, line: { color: "EAF0FA" } });
+  const vf = pick(wmt, "fwd", 12), vr = pick(wmt, "rev", 12);
+  const dBleu = vf && vr ? (vr.bleu_tok - vf.bleu_tok).toFixed(2) : null;
+  const dPpl = vf && vr && vf.test_ppl && vr.test_ppl
+    ? (100 * (vf.test_ppl - vr.test_ppl) / vf.test_ppl).toFixed(0) : null;
+  const ens = pick(m30, "rev", 2, 3), m30r = pick(m30, "rev", 2);
+
+  s.addShape(pres.ShapeType.roundRect, { x: M, y: 1.75, w: 5.85, h: 3.05, rectRadius: 0.09, fill: { color: "EAF0FA" }, line: { color: "EAF0FA" } });
   s.addText("Reproduced", { x: M + 0.25, y: 1.95, w: 5.35, h: 0.35, isTextBox: true, margin: 0, fontFace: BODY_FONT, fontSize: 16, bold: true, color: REV });
   body(s, [
-    "Reversing the source improves both BLEU and perplexity by a clear margin, under an otherwise identical setup.",
-    "A beam of 2 captures most of the benefit of a beam of 12.",
-    "The ordering of Table 1 rows 3 and 4 holds at our scale.",
-  ], { x: M + 0.25, y: 2.45, w: 5.35, h: 3.0, fontSize: 14 });
-  s.addShape(pres.ShapeType.roundRect, { x: 7.0, y: 1.75, w: 5.7, h: 3.9, rectRadius: 0.09, fill: { color: "FAEDED" }, line: { color: "FAEDED" } });
-  s.addText("Not attempted", { x: 7.25, y: 1.95, w: 5.2, h: 0.35, isTextBox: true, margin: 0, fontFace: BODY_FONT, fontSize: 16, bold: true, color: FWD });
+    dBleu ? `Reversal gains +${dBleu} BLEU and cuts test perplexity ${dPpl}% (paper: +4.42, 19%) with nothing else changed.`
+          : "Reversing the source improves both BLEU and perplexity under an otherwise identical setup.",
+    "The reversed model leads at every epoch and in every sentence-length bucket.",
+    ens && m30r ? `Ensembling helps: 3 reversed seeds add +${(ens.bleu_tok - m30r.bleu_tok).toFixed(1)} BLEU on Multi30k.`
+                : "The ordering of Table 1 rows 3 and 4 holds at our scale.",
+  ], { x: M + 0.25, y: 2.45, w: 5.35, h: 2.2, fontSize: 13.5 });
+
+  s.addShape(pres.ShapeType.roundRect, { x: 7.0, y: 1.75, w: 5.7, h: 3.05, rectRadius: 0.09, fill: { color: "FAEDED" }, line: { color: "FAEDED" } });
+  s.addText("Did not reproduce", { x: 7.25, y: 1.95, w: 5.2, h: 0.35, isTextBox: true, margin: 0, fontFace: BODY_FONT, fontSize: 16, bold: true, color: FWD });
   body(s, [
-    "Absolute BLEU anywhere near 26–31.",
-    "The 5-model ensemble rows of Table 1.",
-    "The 1000-best SMT rescoring of Table 2.",
-  ], { x: 7.25, y: 2.45, w: 5.2, h: 3.0, fontSize: 14 });
-  s.addText("These need the paper's data and compute. We say so, rather than presenting a smaller number as if it were comparable.", {
-    x: M, y: 5.85, w: W - 2 * M, h: 0.6, isTextBox: true, margin: 0, fontFace: BODY_FONT, fontSize: 14.5, italic: true, color: INK_SOFT,
+    "Monotone gains from a wider beam: BLEU peaks at beam 2, and length normalisation makes beam 12 worse.",
+    "Robustness on long sentences: both models degrade past 40 source tokens.",
+    "Absolute BLEU near 26–31 — 24× less data, and ~16% of output tokens are <unk>.",
+  ], { x: 7.25, y: 2.45, w: 5.2, h: 2.2, fontSize: 13.5 });
+
+  s.addText("Not attempted: the 5-model ensemble rows on WMT and Table 2's rescoring. We report the misses rather than hide them.", {
+    x: M, y: 5.1, w: W - 2 * M, h: 0.6, isTextBox: true, margin: 0, fontFace: BODY_FONT, fontSize: 14, italic: true, color: INK_SOFT,
   });
 }
 

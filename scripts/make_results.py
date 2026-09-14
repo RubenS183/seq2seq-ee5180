@@ -93,7 +93,7 @@ def main():
 
     # ---- CSV -------------------------------------------------------------
     with (out / "table1_reproduction.csv").open("w", newline="") as fh:
-        w = csv.writer(fh)
+        w = csv.writer(fh, lineterminator="\n")
         w.writerow(["direction", "n_models", "seeds", "beam", "bleu_tok", "bleu_detok",
                     "test_ppl", "n_sentences", "paper_bleu"])
         for r in results:

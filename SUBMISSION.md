@@ -29,13 +29,13 @@ containing the repository without the venv, corpora or checkpoints.
 - **The test set is the paper's own** — newstest2014, full 3003-sentence version, fetched via sacreBLEU (`scripts/get_wmt14.sh`).
 - **Both BLEU conventions are reported**, with signatures: tokenized cased BLEU (the `multi-bleu.pl` equivalent the paper used) and standard sacreBLEU on detokenized output.
 - **The scale gap is stated next to every number**, and we never present our BLEU as comparable to the paper's.
-- **`make test`** runs the correctness gates in about twelve seconds, including beam(B=1)≡greedy and MPS≡CPU gradient agreement.
+- **`make test`** runs 23 correctness gates in a few seconds, including beam(B=1)≡greedy, MPS≡CPU gradient agreement, and exact loss/gradient equality for the memory-saving chunked loss.
 
 ## Work split
 
 | Member | Owns | Files |
 |---|---|---|
 | M1 — Data | download, cleaning, tokenisation, vocab/`UNK`, reversal, bucketing | `vocab.py`, `data.py`, `scripts/get_*.sh`, `prepare_data.py`, `subsample_parallel.py` |
-| M2 — Model & training | encoder/decoder, loss, SGD schedule, clipping, checkpointing | `model.py`, `train.py`, `utils.py`, `benchmark.py` |
-| M3 — Decoding & eval | beam search, ensembling, BLEU harness | `beam.py`, `evaluate.py` |
+| M2 — Model & training | encoder/decoder, loss, SGD schedule, clipping, checkpointing | `model.py`, `losses.py`, `train.py`, `utils.py`, `benchmark.py`, `colab_run_all.py` |
+| M3 — Decoding & eval | beam search, ensembling, BLEU harness | `beam.py`, `evaluate.py`, `analyze_beam.py` |
 | M4 — Analysis & writing | grid, plots, report, slides | `plots.py`, `make_results.py`, `make_figures.py`, `make_report.py`, `make_slides.js` |

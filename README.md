@@ -16,6 +16,48 @@ BLEU-versus-sentence-length analysis.
 
 ---
 
+## Results
+
+> **Scale gap, stated first.** 0.5M training pairs against the paper's 12M; 2×512
+> against 4×1000; a 32k/32k vocabulary against 160k/80k; one laptop GPU against eight.
+> Compare forward against reversed **within our column** — never against the paper's.
+
+### Table 1 rows 3–4 — WMT'14 En→Fr, scored on the paper's own ntst14 (3,003 sentences)
+
+| Model | beam | BLEU (tokenized) | BLEU (sacreBLEU) | test ppl | paper BLEU |
+|---|---|---|---|---|---|
+| Single forward LSTM | 1 | 4.05 | 2.68 | 32.89 | — |
+| Single forward LSTM | 2 | 4.24 | 2.86 | 32.89 | — |
+| **Single forward LSTM** | **12** | **3.89** | 2.71 | 32.89 | 26.17 |
+| Single reversed LSTM | 1 | 6.41 | 4.46 | 24.50 | — |
+| Single reversed LSTM | 2 | 6.82 | 4.82 | 24.50 | — |
+| **Single reversed LSTM** | **12** | **6.60** | 4.77 | 24.50 | 30.59 |
+
+**Reproduced**
+
+- **Reversal wins on both metrics:** +2.71 BLEU and 25% lower test
+  perplexity at beam 12 (paper: +4.42 BLEU, 19% lower perplexity).
+- The reversed model is ahead at **every epoch** of training and in **every source-length
+  bucket**, so the gap is neither a lucky checkpoint nor a short-sentence artefact.
+- On Multi30k, three seeds per arm make the effect far larger than seed noise, and a
+  3-seed reversed ensemble adds +2.7 BLEU over a single model
+  (16.01 → 18.69 at beam 2).
+
+**Did not reproduce — reported, not hidden**
+
+- **Monotone gains from a wider beam.** BLEU peaks at beam 2 and falls at beam 12.
+  Length normalisation removes the brevity penalty yet lowers BLEU further, so brevity is a
+  symptom: a wider beam finds likelier but worse translations
+  ([`results/wmt14_small/beam_ablation.md`](results/wmt14_small/beam_ablation.md)).
+- **Robustness on long sentences.** Both models lose most of their BLEU beyond 40 source
+  tokens — the fixed-vector bottleneck, visible at our scale, and the end-term's subject.
+- **Absolute BLEU.** Beyond the data gap, ~16% of output tokens are `<unk>` under a 32k
+  vocabulary.
+
+Full write-up: [`report/EE5180_midterm_report.pdf`](report/EE5180_midterm_report.pdf) ·
+slides: [`slides/EE5180_midterm_slides.pptx`](slides/EE5180_midterm_slides.pptx) ·
+tables: [`results/`](results/).
+
 ## The claim under test
 
 The paper's central empirical contribution (sec. 3.3) is that **reversing the
@@ -79,15 +121,29 @@ Table 1; only the model and training data are smaller.
 ## Layout
 
 ```
-src/seq2seq/     vocab, data, model, train, beam, evaluate, plots
-scripts/         get_multi30k.sh, get_wmt14.sh, prepare_data.py,
-                 benchmark.py, run_grid.sh, make_results.py
+src/seq2seq/
+  vocab.py       top-k word vocabulary, <unk> handling
+  data.py        cleaning, Moses tokenisation, source reversal, length bucketing,
+                 compact int32 corpus storage
+  model.py       separate encoder / decoder LSTMs, U(-0.08, 0.08) init
+  losses.py      chunked, checkpointed cross-entropy (bounds the 32k-softmax memory)
+  train.py       SGD 0.7 with halving schedule, clip at 5, resumable checkpoints
+  beam.py        left-to-right beam search, ensembling
+  evaluate.py    decoding plus tokenized BLEU and sacreBLEU
+  plots.py       BLEU-by-length (Fig. 3), beam sweep, training curves
+  utils.py       device selection, seeding, checkpoint I/O
+scripts/
+  get_multi30k.sh, get_wmt14.sh, subsample_parallel.py, prepare_data.py   data
+  benchmark.py, run_grid.sh                                               training
+  make_results.py, analyze_beam.py                                        evaluation
+  make_figures.py, make_report.py, md_to_pdf.py, make_slides.js           write-up
+  colab_run_all.py                                                        one-shot Colab driver
 configs/         multi30k.yaml (Tier 0), wmt14_small.yaml (Tier 1)
-tests/           correctness gates — run these before any long job
-results/         reproduction tables, figures, sample translations
-report/          mid-term write-up
-slides/          mid-term presentation
-notebooks/       colab_run.ipynb — same code on a free GPU
+tests/           23 correctness gates — run these before any long job
+results/         reproduction tables, figures, decoded hypotheses, beam ablation
+report/          mid-term write-up (.md and .pdf)
+slides/          mid-term presentation (.pptx)
+notebooks/       colab_run.ipynb — the same code on a Colab GPU
 ```
 
 Heavy artifacts (venv, corpora, checkpoints) live in `$EE5180_WORK`
@@ -99,16 +155,16 @@ eviction mid-run.
 
 | Member | Owns | Files |
 |---|---|---|
-| M1 — Data | download, cleaning, tokenisation, vocab/`UNK`, reversal, bucketing | `vocab.py`, `data.py`, `scripts/get_*.sh`, `prepare_data.py` |
-| M2 — Model & training | encoder/decoder, loss, SGD schedule, clipping, checkpointing | `model.py`, `train.py`, `utils.py`, `benchmark.py` |
-| M3 — Decoding & eval | beam search, ensembling, BLEU harness | `beam.py`, `evaluate.py` |
-| M4 — Analysis & writing | grid, plots, report, slides | `plots.py`, `make_results.py`, `report/`, `slides/` |
+| M1 — Data | download, cleaning, tokenisation, vocab/`UNK`, reversal, bucketing | `vocab.py`, `data.py`, `scripts/get_*.sh`, `subsample_parallel.py`, `prepare_data.py` |
+| M2 — Model & training | encoder/decoder, loss, SGD schedule, clipping, checkpointing | `model.py`, `losses.py`, `train.py`, `utils.py`, `benchmark.py`, `colab_run_all.py` |
+| M3 — Decoding & eval | beam search, ensembling, BLEU harness | `beam.py`, `evaluate.py`, `analyze_beam.py` |
+| M4 — Analysis & writing | grid, plots, report, slides | `plots.py`, `make_results.py`, `make_figures.py`, `make_report.py`, `md_to_pdf.py`, `make_slides.js` |
 
 ## Reproducing from scratch
 
 ```bash
 make setup            # venv outside iCloud + pinned deps
-make test             # correctness gates, ~12 s — do not skip
+make test             # 23 correctness gates, a few seconds — do not skip
 make benchmark        # measures tgt-words/s; sizes the WMT run
 
 make data-multi30k    # Tier 0 corpus (seconds)
@@ -116,19 +172,39 @@ make smoke            # {fwd,rev} x 3 seeds, ~35 min on an M1 Pro
 make results-multi30k
 
 make data-wmt         # ~700 MB download + tokenisation
-make wmt              # the reported rows — hours; run overnight
-make results-wmt
+make wmt              # the reported rows — ~8.5 h for both arms on an M1 Pro
+make results-wmt      # decode beam 1/2/12, score, plot (~30 min)
+make beam-ablation    # length-normalised decode + BLEU decomposition (~30 min)
+
+make figures report slides   # rebuild the explanatory figures, PDF report and deck
 ```
+
+On a GPU, `python scripts/colab_run_all.py` does every WMT stage in order and can be
+re-run after a disconnect: finished stages are skipped and training resumes from the
+last completed epoch. See `notebooks/colab_run.ipynb`.
 
 Training is resumable: every epoch writes `last.pt` atomically, and a rerun of
 the same command picks up where it stopped.
 
-**Do not decode while training.** Both fit individually on a 16 GB machine
-(training peaks around 1.4 GB resident), but running a multi-model beam decode
-alongside a training run pushed this Mac into swap thrashing and slowed training
-**5x** — from 0.49 s/step to over 2.4 s/step. Run `make wmt` to completion, then
-`make results-wmt`. Measured in isolation on the real 500k-pair corpus: 0.49
-s/step, 6,874 target words/s, ~0.53 h/epoch, ~8.5 h for both arms.
+**Memory: two fixes that made the run fit on a 16 GB Mac.** The paper spent four of its
+eight GPUs on a naive softmax; at our scale the same softmax was still the bottleneck.
+
+- *The logits tensor.* Batch 128 × 51 target positions × 32k vocabulary is 836 MB for
+  one tensor, and autograd keeps it alive for the backward pass. `losses.py` computes
+  the projection and cross-entropy in checkpointed chunks over time
+  (`loss_chunk_size: 8`). On the worst-case batch, MPS memory fell from 5,676 MB to
+  3,528 MB and a step got faster (0.94 → 0.75 s).
+- *Allocator growth.* Length bucketing produces many distinct tensor shapes, and Metal's
+  caching allocator keeps a block per shape; throughput collapsed from ~7,000 to under
+  1,000 target words/s partway through an epoch. Padded lengths are now rounded up to a
+  multiple of 8 and the cache is released every 200 steps (`empty_cache_every`).
+
+Both are mathematically inert, and tests assert it: the chunked loss matches the full
+one in value and in every gradient, and the extra padding leaves the loss unchanged.
+With them the WMT run held ~7,150 target words/s: 31 min per epoch, 4.2 h per arm.
+
+Do not run a second heavy job alongside training. A concurrent multi-model decode
+pushed this machine into swap and slowed training 5×.
 
 **Device note.** Training runs on MPS; **decoding defaults to CPU**. Beam search
 is latency-bound rather than throughput-bound — each step is one sentence × B

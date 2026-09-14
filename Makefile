@@ -3,7 +3,7 @@ WORK ?= $(HOME)/ee5180-work
 PY   ?= $(WORK)/.venv/bin/python
 export EE5180_WORK = $(WORK)
 
-.PHONY: help setup test data-multi30k data-wmt smoke wmt results-multi30k results-wmt figures report slides submit clean-runs
+.PHONY: help setup test data-multi30k data-wmt smoke wmt results-multi30k results-wmt beam-ablation figures report slides submit clean-runs
 
 help:
 	@grep -E '^[a-z0-9-]+:.*?##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/' | column -t -s "$$(printf '\t')"
@@ -57,6 +57,15 @@ results-wmt:        ## decode + score + plot Tier 1 (the submitted table)
 	  --data-dir $(WORK)/data/wmt14/prepared --runs-root $(WORK)/runs/wmt14 \
 	  --out results/wmt14_small --beams 1 2 12 --seeds 1 \
 	  --scale-note "0.5M pairs vs the paper's 12M; 2x512 vs 4x1000; 32k/32k vocab vs 160k/80k; ~8 epochs on one M1 Pro GPU vs 7.5 epochs on 8 GPUs for 10 days. Absolute BLEU is NOT comparable to Table 1 - the direction and shape of the effects are."
+
+beam-ablation:      ## why a wider beam hurts: length-normalised decode + BLEU decomposition
+	for B in 1 2 12; do \
+	  PYTHONPATH=src $(PY) -m seq2seq.evaluate \
+	    --checkpoint $(WORK)/runs/wmt14/rev_seed1/best.pt \
+	    --data-dir $(WORK)/data/wmt14/prepared --beam $$B --reverse-source \
+	    --length-norm 1.0 --out-dir results/wmt14_small/lengthnorm --tag rev_seed1_ln > /dev/null; \
+	done
+	$(PY) scripts/analyze_beam.py
 
 figures:            ## regenerate the explanatory figures
 	$(PY) scripts/make_figures.py results/figures

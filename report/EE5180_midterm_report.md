@@ -138,9 +138,10 @@ flag it rather than bury it.
 
 ### The beam-size trend
 
-Reversed model: B=1 **6.41**, B=2 **6.82**, B=12 **6.60**. Beam 2 recovers
-**216%** of the gain from beam 1 to beam 12, reproducing the paper's observation
-that *"a beam of size 2 provides most of the benefits of beam search"* (sec. 3.2).
+Reversed model: B=1 **6.41**, B=2 **6.82**, B=12 **6.60**. BLEU
+**peaks at beam 2** and falls at beam 12, so the paper's monotone improvement with beam
+size does **not** reproduce at our scale. Beam 2 beating beam 1 is consistent with the
+paper; beam 12 beating beam 2 is not. The decomposition below shows why.
 
 ![Beam sweep](../results/wmt14_small/beam_sweep.png)
 
@@ -168,6 +169,25 @@ why, and shows that length normalisation is *not* the fix.
 ### Behaviour on long sentences (paper Fig. 3)
 
 ![BLEU by source length](../results/wmt14_small/bleu_by_length.png)
+
+| source length | sentences | forward BLEU | reversed BLEU | reversed / forward |
+|---|---|---|---|---|
+| 1-10 | 405 | 5.67 | 9.53 | 1.68x |
+| 11-20 | 954 | 5.36 | 9.26 | 1.73x |
+| 21-30 | 832 | 4.03 | 7.19 | 1.79x |
+| 31-40 | 535 | 3.23 | 5.19 | 1.61x |
+| 41-inf | 277 | 2.41 | 3.69 | 1.53x |
+
+**Reversal helps at every sentence length** — the reversed model is ahead in each
+bucket, so its overall advantage is not an artefact of short sentences.
+
+**But the paper's long-sentence robustness does not reproduce.** The paper reports
+that *"the LSTM did well on long sentences"* (sec. 3.7, Fig. 3). Ours
+degrades from 9.53 BLEU on 1-10-token sources to 3.69 on 41+,
+and the forward model degrades the same way. That is consistent with a single fixed
+vector (2048 reals here, against the paper's 8000) being too small to carry a long
+sentence at this scale — the bottleneck hypothesis the end-term half of the project
+tests directly, by adding attention and rerunning this grid.
 
 ### Training curves
 
@@ -240,6 +260,9 @@ decomposes this. Length normalisation removes the brevity penalty but makes BLEU
 the cause is not length calibration; a wider beam finds genuinely higher-probability
 hypotheses that are poorer translations, because at 1/24 of the paper's data the model's
 likelihood and translation quality have diverged.
+
+Nor does the paper's robustness on long sentences: both of our models lose most of their BLEU
+past 40 source tokens, although reversal keeps its lead in every length bucket.
 
 **Not reproduced, and not attempted.** Absolute BLEU anywhere near 26–31, the 5-model
 ensemble rows, and the 1000-best rescoring of Table 2. These need the paper's data and

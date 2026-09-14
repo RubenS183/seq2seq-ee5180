@@ -221,9 +221,17 @@ def main():
             frac = (b2 - b1) / (b12 - b1) * 100 if abs(b12 - b1) > 1e-9 else float("nan")
             A("### The beam-size trend")
             A("")
-            A(f"Reversed model: B=1 **{b1:.2f}**, B=2 **{b2:.2f}**, B=12 **{b12:.2f}**. Beam 2 recovers")
-            A(f"**{frac:.0f}%** of the gain from beam 1 to beam 12, reproducing the paper's observation")
-            A("that *\"a beam of size 2 provides most of the benefits of beam search\"* (sec. 3.2).")
+            if b12 > b2 > b1:
+                A(f"Reversed model: B=1 **{b1:.2f}**, B=2 **{b2:.2f}**, B=12 **{b12:.2f}**. Beam 2 recovers")
+                A(f"**{frac:.0f}%** of the gain from beam 1 to beam 12, reproducing the paper's observation")
+                A("that *\"a beam of size 2 provides most of the benefits of beam search\"* (sec. 3.2).")
+            else:
+                # A "percentage recovered" is meaningless when the ordering is not
+                # monotone (it exceeds 100%), so say what actually happened.
+                A(f"Reversed model: B=1 **{b1:.2f}**, B=2 **{b2:.2f}**, B=12 **{b12:.2f}**. BLEU")
+                A(f"**peaks at beam 2** and falls at beam 12, so the paper's monotone improvement with beam")
+                A("size does **not** reproduce at our scale. Beam 2 beating beam 1 is consistent with the")
+                A("paper; beam 12 beating beam 2 is not. The decomposition below shows why.")
             A("")
         A("![Beam sweep](../results/wmt14_small/beam_sweep.png)")
         A("")
@@ -236,6 +244,35 @@ def main():
         A("")
         A("![BLEU by source length](../results/wmt14_small/bleu_by_length.png)")
         A("")
+        fl, rl = pick(wmt, "fwd", 12), pick(wmt, "rev", 12)
+        if fl and rl and fl.get("bleu_by_length") and rl.get("bleu_by_length"):
+            fb = {b["bucket"]: b for b in fl["bleu_by_length"]}
+            rb = {b["bucket"]: b for b in rl["bleu_by_length"]}
+            shared = [k for k in rb if k in fb]
+            A("| source length | sentences | forward BLEU | reversed BLEU | reversed / forward |")
+            A("|---|---|---|---|---|")
+            for k in shared:
+                ratio = rb[k]["bleu_tok"] / fb[k]["bleu_tok"] if fb[k]["bleu_tok"] else float("nan")
+                A(f"| {k} | {rb[k]['n']} | {fb[k]['bleu_tok']:.2f} | {rb[k]['bleu_tok']:.2f} | {ratio:.2f}x |")
+            A("")
+            wins = all(rb[k]["bleu_tok"] > fb[k]["bleu_tok"] for k in shared)
+            first, last = shared[0], shared[-1]
+            degrades = rb[last]["bleu_tok"] < 0.75 * rb[first]["bleu_tok"]
+            if wins:
+                A("**Reversal helps at every sentence length** — the reversed model is ahead in each")
+                A("bucket, so its overall advantage is not an artefact of short sentences.")
+            if degrades:
+                A("")
+                A(f"**But the paper's long-sentence robustness does not reproduce.** The paper reports")
+                A("that *\"the LSTM did well on long sentences\"* (sec. 3.7, Fig. 3). Ours")
+                label = lambda k: k.replace("-inf", "+")
+                A(f"degrades from {rb[first]['bleu_tok']:.2f} BLEU on {label(first)}-token sources to "
+                  f"{rb[last]['bleu_tok']:.2f} on {label(last)},")
+                A("and the forward model degrades the same way. That is consistent with a single fixed")
+                A("vector (2048 reals here, against the paper's 8000) being too small to carry a long")
+                A("sentence at this scale — the bottleneck hypothesis the end-term half of the project")
+                A("tests directly, by adding attention and rerunning this grid.")
+            A("")
         A("### Training curves")
         A("")
         A("![Dev perplexity](../results/wmt14_small/training_curves.png)")
@@ -311,6 +348,9 @@ def main():
     A("the cause is not length calibration; a wider beam finds genuinely higher-probability")
     A("hypotheses that are poorer translations, because at 1/24 of the paper's data the model's")
     A("likelihood and translation quality have diverged.")
+    A("")
+    A("Nor does the paper's robustness on long sentences: both of our models lose most of their BLEU")
+    A("past 40 source tokens, although reversal keeps its lead in every length bucket.")
     A("")
     A("**Not reproduced, and not attempted.** Absolute BLEU anywhere near 26–31, the 5-model")
     A("ensemble rows, and the 1000-best rescoring of Table 2. These need the paper's data and")
