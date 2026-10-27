@@ -51,6 +51,31 @@ def singles(rows, beam=None):
     return [r for r in out if beam is None or r["beam_size"] == beam]
 
 
+def dedupe(rows):
+    """Drop rows that re-score an identical configuration.
+
+    `make_results.py --per-seed` decodes the primary seed twice at the largest
+    beam -- once as that direction's "single model" row and once in the
+    per-seed sweep. Both rows are the same checkpoint at the same beam, so
+    averaging over them weights the primary seed double and reports an
+    inflated run count (3 seeds shown as "4 runs"). Every statistic below is a
+    mean or a standard deviation over these rows, so the duplicate has to go
+    before any of them are computed.
+
+    Keyed on the full configuration rather than the score, so two seeds that
+    happen to tie are still two independent runs.
+    """
+    seen, out = set(), []
+    for r in rows:
+        key = (r["direction"], r["arm"], r["beam_size"],
+               tuple(r["seeds"]), r["n_models"])
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(r)
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--name", required=True)
@@ -67,6 +92,10 @@ def main():
             + load_rows(Path(args.attn) / "all_results.json", "attn"))
     if not rows:
         sys.exit("no result rows found in either arm; run make_results.py first")
+    rows, n_raw = dedupe(rows), len(rows)
+    if len(rows) != n_raw:
+        print(f"[dedupe] dropped {n_raw - len(rows)} re-scored duplicate row(s) "
+              f"of {n_raw}", file=sys.stderr)
     (out / "endterm_results.json").write_text(json.dumps(rows, indent=2))
 
     # ---- the headline figure: both arms' length curves on one axis ----------
@@ -179,24 +208,57 @@ def main():
     if "base" in rev and "attn" in rev:
         bb = {b["bucket"]: b["bleu_tok"] for b in rev["base"].get("bleu_by_length", [])}
         ba = {b["bucket"]: b["bleu_tok"] for b in rev["attn"].get("bleu_by_length", [])}
-        lines += ["| source length | fixed vector | + attention | gain |", "|---|---|---|---|"]
+        # Sentence counts per bucket, so a trend read off a near-empty tail
+        # bucket cannot be mistaken for a result.
+        nn = {b["bucket"]: b.get("n") for b in rev["base"].get("bleu_by_length", [])}
+        lines += ["| source length | sentences | fixed vector | + attention | gain |",
+                  "|---|---|---|---|---|"]
         for bucket in [b["bucket"] for b in rev["base"].get("bleu_by_length", [])]:
             if bucket in ba:
-                lines.append(f"| {bucket} | {bb[bucket]:.2f} | {ba[bucket]:.2f} | "
+                count = nn.get(bucket)
+                lines.append(f"| {bucket} | {count if count is not None else '-'} | "
+                             f"{bb[bucket]:.2f} | {ba[bucket]:.2f} | "
                              f"**{ba[bucket] - bb[bucket]:+.2f}** |")
         buckets = [b for b in bb if b in ba]
         if len(buckets) >= 2:
             first, last = buckets[0], buckets[-1]
+            drop_base = bb[last] - bb[first]
+            drop_attn = ba[last] - ba[first]
+            gain_first = ba[first] - bb[first]
+            gain_last = ba[last] - bb[last]
             lines += [
                 "",
                 f"- Fixed vector, {first} -> {last}: {bb[first]:.2f} -> {bb[last]:.2f} "
-                f"({bb[last] - bb[first]:+.2f}).",
+                f"({drop_base:+.2f}).",
                 f"- Attention,    {first} -> {last}: {ba[first]:.2f} -> {ba[last]:.2f} "
-                f"({ba[last] - ba[first]:+.2f}).",
+                f"({drop_attn:+.2f}).",
                 "",
-                "If the first of those falls and the second does not, the fixed-length vector",
-                "was the binding constraint. If both fall equally, something else is.",
             ]
+            # State which case the numbers actually show. The claim is about
+            # the GAIN widening with length -- attention is supposed to help
+            # most where a fixed vector has most to carry.
+            if gain_last > gain_first:
+                lines.append(
+                    f"The gain widens with source length ({gain_first:+.2f} at {first} -> "
+                    f"{gain_last:+.2f} at {last}), which is the bottleneck claim: the "
+                    f"longer the source, the more a single fixed vector costs."
+                )
+            else:
+                lines.append(
+                    f"**The gain does NOT widen with source length** ({gain_first:+.2f} at "
+                    f"{first} -> {gain_last:+.2f} at {last}), and the attention arm falls off "
+                    f"at least as fast as the fixed-vector arm ({drop_attn:+.2f} vs "
+                    f"{drop_base:+.2f}). At this scale and on this corpus the length curve "
+                    f"does NOT evidence the bottleneck; the arm-level gain above is real, but "
+                    f"it is not explained by source length."
+                )
+            tail = nn.get(last)
+            if isinstance(tail, int) and tail < 100:
+                lines += [
+                    "",
+                    f"Treat the `{last}` row with care: it is {tail} sentences, so its BLEU is "
+                    f"noisy and the slope above rests largely on it.",
+                ]
 
     lines += ["", "## Figures", "",
               "![BLEU by source length, both arms](bottleneck_by_length.png)", "",

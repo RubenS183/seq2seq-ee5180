@@ -99,6 +99,14 @@ def main():
         if args.per_seed and len(present) > 1:
             beam = max(args.beams)
             for ckpt, seed in zip(present, args.seeds):
+                # present[0] at this beam is already in `results` as the
+                # "single model" row above. Decoding it again would both waste
+                # a decode and leave two identical rows, which any mean over
+                # seeds then weights double -- see dedupe() in
+                # make_endterm_results.py, which also guards already-written
+                # all_results.json files.
+                if ckpt == present[0] and beam in args.beams:
+                    continue
                 res = run_eval([ckpt], data_dir, beam, reverse, args.device,
                                args.limit, 0.0, "fr", "en", hyp_dir,
                                f"{direction}{arm}_seed{seed}",
