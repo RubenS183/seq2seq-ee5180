@@ -7,6 +7,12 @@ Only the TRAINING side is filtered (length / ratio / duplicates). Dev and test
 are tokenised but never filtered -- dropping test sentences would inflate BLEU.
 Raw (untokenised) references are kept alongside so we can report both a
 detokenised sacreBLEU number and the paper-comparable tokenised one.
+
+`--max-ratio inf` disables length-mismatch filtering entirely, which is how the
+end-term data is built: the drop report then records `"ratio": 0`, which is the
+artefact that evidences no pair was dropped for a source/target length
+mismatch. The mid-term defaults (max_len 50, max_ratio 2.5) are left alone so
+`make data-wmt` keeps reproducing the submitted corpus exactly.
 """
 from __future__ import annotations
 
@@ -44,7 +50,15 @@ def main():
 
     out = Path(args.out).expanduser()
     out.mkdir(parents=True, exist_ok=True)
-    report: dict = {"args": vars(args)}
+    # json.dumps writes bare `Infinity` for float("inf"), which is not valid
+    # JSON and breaks any strict reader of prepare_report.json later. Record it
+    # as the string "inf" instead.
+    report: dict = {
+        "args": {
+            k: ("inf" if isinstance(v, float) and v == float("inf") else v)
+            for k, v in vars(args).items()
+        }
+    }
 
     def tok(paths, lang):
         lines = []

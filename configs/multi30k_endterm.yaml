@@ -1,0 +1,37 @@
+# Tier 0, END-TERM -- Multi30k En->Fr, prepared without length-mismatch
+# filtering. 29k pairs and ~5 min per run, so this tier carries the parts the
+# WMT budget cannot afford: 3 seeds for error bars, and the full
+# {forward,reversed} x {no attention, attention} grid.
+#
+# That 2x2 is the interesting one. The paper's reversal trick exists to shorten
+# the distance between a source word and the moment the decoder needs it. If
+# attention removes the bottleneck, reversal should stop mattering -- so the
+# forward/reversed gap ought to collapse in the attention arm. Tier 0 is where
+# we can afford to test that.
+#
+# NOT a reproduction of Table 1 (wrong corpus, wrong test set).
+name: multi30k_endterm
+data_dir: $WORK/data/multi30k/prepared_nofilter
+run_dir: $WORK/runs/multi30k_endterm
+
+emb_dim: 256
+hidden_dim: 256
+num_layers: 2
+dropout: 0.0
+init_range: 0.08
+
+attention: none
+attn_dim: 256
+encoder_bidirectional: false
+
+lr: 0.7
+batch_size: 128
+grad_clip: 5.0
+epochs: 15
+lr_constant_epochs: 10.0
+lr_halve_every: 1.0
+
+reverse_source: true
+seed: 1
+device: auto
+log_every: 50
