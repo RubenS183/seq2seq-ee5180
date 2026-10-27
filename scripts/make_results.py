@@ -22,7 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from seq2seq.data import read_lines  # noqa: E402
-from seq2seq.evaluate import run_eval  # noqa: E402
+from seq2seq.evaluate import BUCKET_SETS, run_eval  # noqa: E402
 from seq2seq.plots import plot_beam_sweep, plot_bleu_by_length, plot_training_curves  # noqa: E402
 from seq2seq.utils import work_dir  # noqa: E402
 
@@ -44,7 +44,18 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--beams", type=int, nargs="+", default=[1, 2, 12])
     ap.add_argument("--seeds", type=int, nargs="+", default=[1])
+    # Which end-term arm's run directories to read. "" is the mid-term layout,
+    # {direction}_seed{N}; "attn" reads {direction}_attn_seed{N}.
+    ap.add_argument("--arm", default="", choices=["", "attn"])
+    ap.add_argument("--buckets", default="midterm", choices=sorted(BUCKET_SETS))
+    ap.add_argument("--max-decode-len", dest="max_decode_len", type=int, default=100)
+    ap.add_argument("--directions", nargs="+", default=["fwd", "rev"],
+                    choices=["fwd", "rev"])
     ap.add_argument("--ensemble", action="store_true", help="also decode a seed-ensemble")
+    ap.add_argument("--per-seed", dest="per_seed", action="store_true",
+                    help="also decode each seed on its own at the largest beam, so "
+                         "the end-term can report a mean and a spread rather than "
+                         "one run's number")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--device", default="cpu")  # see evaluate.py: 9x faster than MPS for beam search
     ap.add_argument("--scale-note", default="")
@@ -66,8 +77,10 @@ def main():
             sys.exit(f"--rebuild-md needs {cached}; run without it first.")
         results = json.loads(cached.read_text())
         print(f"[rebuild-md] {len(results)} cached rows, no decoding")
-    for direction, reverse in ([] if args.rebuild_md else (("fwd", False), ("rev", True))):
-        ckpts = [runs_root / f"{direction}_seed{s}" / "best.pt" for s in args.seeds]
+    arm = f"_{args.arm}" if args.arm else ""
+    wanted = [(d, d == "rev") for d in ("fwd", "rev") if d in args.directions]
+    for direction, reverse in ([] if args.rebuild_md else wanted):
+        ckpts = [runs_root / f"{direction}{arm}_seed{s}" / "best.pt" for s in args.seeds]
         present = [c for c in ckpts if c.exists()]
         if not present:
             print(f"[warn] no checkpoints for {direction}: {ckpts}", file=sys.stderr)
@@ -75,16 +88,33 @@ def main():
         for beam in args.beams:
             # single model = the primary seed
             res = run_eval([present[0]], data_dir, beam, reverse, args.device,
-                           args.limit, 0.0, "fr", "en", hyp_dir, f"{direction}_seed{args.seeds[0]}")
+                           args.limit, 0.0, "fr", "en", hyp_dir,
+                           f"{direction}{arm}_seed{args.seeds[0]}",
+                           BUCKET_SETS[args.buckets], args.max_decode_len)
             res["direction"], res["seeds"] = direction, [args.seeds[0]]
+            res["arm"] = args.arm or "base"
             results.append(res)
             print(f"  {direction} beam={beam:>2} single -> BLEU_tok {res['bleu_tok']:.2f} "
                   f"| BLEU_detok {res['bleu_detok']:.2f} | ppl {res['test_ppl']}", flush=True)
+        if args.per_seed and len(present) > 1:
+            beam = max(args.beams)
+            for ckpt, seed in zip(present, args.seeds):
+                res = run_eval([ckpt], data_dir, beam, reverse, args.device,
+                               args.limit, 0.0, "fr", "en", hyp_dir,
+                               f"{direction}{arm}_seed{seed}",
+                               BUCKET_SETS[args.buckets], args.max_decode_len)
+                res["direction"], res["seeds"] = direction, [seed]
+                res["arm"] = args.arm or "base"
+                results.append(res)
+                print(f"  {direction} beam={beam:>2} seed{seed} -> BLEU_tok {res['bleu_tok']:.2f}", flush=True)
         if args.ensemble and len(present) > 1:
             for beam in args.beams:
                 res = run_eval(present, data_dir, beam, reverse, args.device,
-                               args.limit, 0.0, "fr", "en", hyp_dir, f"{direction}_ens{len(present)}")
+                               args.limit, 0.0, "fr", "en", hyp_dir,
+                               f"{direction}{arm}_ens{len(present)}",
+                               BUCKET_SETS[args.buckets], args.max_decode_len)
                 res["direction"], res["seeds"] = direction, list(args.seeds[: len(present)])
+                res["arm"] = args.arm or "base"
                 results.append(res)
                 print(f"  {direction} beam={beam:>2} ens{len(present)} -> BLEU_tok {res['bleu_tok']:.2f}", flush=True)
 
@@ -107,8 +137,13 @@ def main():
                         f"BLEU by source length ({args.name}) - paper Fig. 3 analogue")
     plot_beam_sweep(results, out / "beam_sweep.png", f"Beam sweep ({args.name})")
     plot_training_curves(
-        {f"{d}_seed{s}": runs_root / f"{d}_seed{s}" for d in ("rev", "fwd") for s in args.seeds
-         if (runs_root / f"{d}_seed{s}" / "log.jsonl").exists()},
+        # ("rev", "fwd") order, not args.directions order: it sets the legend
+        # and draw order, and flipping it changes the rendered PNG for runs that
+        # are otherwise identical.
+        {f"{d}{arm}_seed{s}": runs_root / f"{d}{arm}_seed{s}"
+         for d in ("rev", "fwd") if d in args.directions
+         for s in args.seeds
+         if (runs_root / f"{d}{arm}_seed{s}" / "log.jsonl").exists()},
         out / "training_curves.png", f"Dev perplexity ({args.name})")
 
     # ---- markdown --------------------------------------------------------
@@ -164,7 +199,8 @@ def main():
     # ---- sample translations (Table 3 analogue) --------------------------
     best = max((r for r in results if r["direction"] == "rev"), key=lambda r: r["bleu_tok"], default=None)
     if best:
-        stem = f"{'rev_ens' + str(best['n_models']) if best['n_models'] > 1 else 'rev_seed' + str(best['seeds'][0])}_beam{best['beam_size']}"
+        stem = (f"rev{arm}_ens{best['n_models']}" if best["n_models"] > 1
+                else f"rev{arm}_seed{best['seeds'][0]}") + f"_beam{best['beam_size']}"
         hyp_file = hyp_dir / f"{stem}.hyp.detok.fr"
         if hyp_file.exists():
             src = read_lines(data_dir / "test.raw.en")

@@ -125,21 +125,27 @@ src/seq2seq/
   vocab.py       top-k word vocabulary, <unk> handling
   data.py        cleaning, Moses tokenisation, source reversal, length bucketing,
                  compact int32 corpus storage
-  model.py       separate encoder / decoder LSTMs, U(-0.08, 0.08) init
+  model.py       separate encoder / decoder LSTMs, U(-0.08, 0.08) init;
+                 AttnDecoder + DecodeState behind `attention: bahdanau`
+  attention.py   Bahdanau additive attention and the source mask (end-term)
   losses.py      chunked, checkpointed cross-entropy (bounds the 32k-softmax memory)
   train.py       SGD 0.7 with halving schedule, clip at 5, resumable checkpoints
   beam.py        left-to-right beam search, ensembling
   evaluate.py    decoding plus tokenized BLEU and sacreBLEU
-  plots.py       BLEU-by-length (Fig. 3), beam sweep, training curves
+  plots.py       BLEU-by-length (Fig. 3), beam sweep, training curves,
+                 bottleneck overlay, alignment heatmaps
   utils.py       device selection, seeding, checkpoint I/O
 scripts/
   get_multi30k.sh, get_wmt14.sh, subsample_parallel.py, prepare_data.py   data
   benchmark.py, run_grid.sh                                               training
   make_results.py, analyze_beam.py                                        evaluation
+  make_endterm_results.py, plot_alignments.py, probe_bottleneck.py        end-term analysis
+  copy_task.py, baseline_regression.sh                                    end-term gates
   make_figures.py, make_report.py, md_to_pdf.py, make_slides.js           write-up
   colab_run_all.py                                                        one-shot Colab driver
-configs/         multi30k.yaml (Tier 0), wmt14_small.yaml (Tier 1)
-tests/           23 correctness gates — run these before any long job
+configs/         multi30k.yaml, wmt14_small.yaml            (mid-term)
+                 multi30k_endterm.yaml, wmt14_endterm.yaml  (end-term)
+tests/           52 correctness gates — run these before any long job
 results/         reproduction tables, figures, decoded hypotheses, beam ablation
 report/          mid-term write-up (.md and .pdf)
 slides/          mid-term presentation (.pptx)
@@ -158,7 +164,7 @@ eviction mid-run.
 | M1 — Data | download, cleaning, tokenisation, vocab/`UNK`, reversal, bucketing | `vocab.py`, `data.py`, `scripts/get_*.sh`, `subsample_parallel.py`, `prepare_data.py` |
 | M2 — Model & training | encoder/decoder, loss, SGD schedule, clipping, checkpointing | `model.py`, `losses.py`, `train.py`, `utils.py`, `benchmark.py`, `colab_run_all.py` |
 | M3 — Decoding & eval | beam search, ensembling, BLEU harness | `beam.py`, `evaluate.py`, `analyze_beam.py` |
-| M4 — Analysis & writing | grid, plots, report, slides | `plots.py`, `make_results.py`, `make_figures.py`, `make_report.py`, `md_to_pdf.py`, `make_slides.js` |
+| M4 — Analysis & writing | grid, plots, report, slides | `plots.py`, `make_results.py`, `make_endterm_results.py`, `plot_alignments.py`, `probe_bottleneck.py`, `copy_task.py`, `make_figures.py`, `make_report.py`, `md_to_pdf.py`, `make_slides.js` |
 
 ## Reproducing from scratch
 
@@ -225,8 +231,91 @@ Pass `--device mps` to override.
   has historically produced silently wrong numbers, and finding that out after
   an overnight run costs a day.
 
-## Scope
+## End-term — the fixed-vector bottleneck
 
-Mid-term only. Attention, the Transformer contrast, and SMT 1000-best rescoring
-(Table 2) are end-term work; `model.py` is structured so Bahdanau attention
-drops in behind a flag and the identical grid reruns.
+The mid-term's model pushes a whole source sentence through one fixed-length
+vector before decoding starts. The end-term tests whether that is the binding
+constraint, by implementing **Bahdanau additive attention** on this same
+codebase and rerunning the identical grid.
+
+### What changed, and what deliberately did not
+
+**The corpus.** The mid-term filtered its training pairs on a source/target
+length *ratio* (`max_ratio=2.5`) and dropped anything over 50 tokens. The
+end-term data drops the mismatch filter entirely (`--max-ratio inf`) and raises
+the cap to 100, so no pair is discarded for a length mismatch — the new
+`prepare_report.json` records `"ratio": 0`. Measured effect on WMT'14: the ratio
+filter had been removing 1,823 of 1,283,251 pairs (0.14%) and the 50-token cap
+170,275 (13.3%). The training set is still subsampled to exactly 500,000 pairs,
+so the corpus *size* is held fixed and only its length distribution moves (mean
+target length 23.4 → 26.2 tokens).
+
+**The baseline is retrained on that data.** Comparing attention-on-new-data
+against no-attention-on-old-data would confound the architecture with the
+corpus, so `runs/wmt14_endterm/rev_seed1` is a fresh no-attention run. Both arms
+share one config file (`configs/wmt14_endterm.yaml`) and differ only in
+`--attention`, so there is no second config to drift out of sync.
+
+**Everything else is held.** Same optimiser (plain SGD 0.7), same halving
+schedule, same clip at 5, same batch size, same seed and batch order, same
+initialisation range — including on the attention parameters. The encoder stays
+*unidirectional*: Bahdanau et al. use a BiRNN, but adding bidirectionality at
+the same time as attention would confound the two, so it is a separate flag
+(`encoder_bidirectional`) and a declared deviation.
+
+### Declared deviations specific to this arm
+
+| Deviation | Why |
+|---|---|
+| tanh readout instead of the paper's maxout over `U_o s_i + V_o E y_{i-1} + C_o c_i` | All three terms are kept; only the maxout is replaced. tanh bounds the readout, so the output layer sees the same magnitudes as the baseline and Sutskever's lr 0.7 / clip 5 transfer untouched. An unbounded readout would have needed its own tuning, and then a BLEU gap between arms could be an optimisation artefact rather than an architectural result. |
+| unidirectional encoder | Keeps attention the only variable against the baseline. |
+| context enters the first decoder layer and the readout, not every layer | Bahdanau's decoder is single-layer, so multi-layer placement is a deviation either way; this is the cheaper one and measured no worse. |
+
+### Cost, measured not assumed
+
+`make benchmark` reports both arms with the same instrument. On this M1 Pro at
+the end-term's shape (batch 128, 2×512, 32k vocab, `loss_chunk_size: 8`):
+
+| arm | tgt-words/s | params | 8 epochs |
+|---|---|---|---|
+| fixed vector | 5,970 | 57.6M | 4.8 h |
+| + attention | 5,045 | 59.9M | 5.7 h |
+
+**1.18× slower, +3.6% parameters.** The per-step attention loop is ~3× slower
+than the baseline's single fused LSTM call in isolation, but the decoder is only
+a small share of a step — the 32k softmax dominates — so it dilutes to 1.18×
+end to end. The small parameter delta matters for the argument: the arms' BLEU
+gap cannot be waved away as extra capacity.
+
+### Gates added for this arm
+
+* `make baseline-regression` — re-decodes the submitted mid-term checkpoints and
+  `diff`s the hypotheses against the committed files. Decoding is deterministic,
+  so the diff must be **empty**: that is a far sharper statement than "BLEU still
+  rounds to 6.60", and it is what proves the refactor left the paper's model
+  alone.
+* `make copy-task` — target == source over random tokens, so nothing is
+  memorisable and emitting position *t* requires reading source position *t*. The
+  attention arm solves it and learns the exact diagonal; the fixed-vector arm
+  does not. The bottleneck in miniature, in about a minute, with no corpus.
+* `tests/test_attention.py` — masking, alignment normalisation, beam(B=1) ≡
+  greedy for this arm, MPS/CPU agreement over the new Metal kernels, and a gate
+  that teacher-forced training and step-by-step decoding agree to 1e-6 (an
+  off-by-one in the `s_{t-1}` attention query would otherwise make training
+  optimise a model that decoding does not implement).
+
+### Running it
+
+```bash
+make test                      # 52 gates, ~14 s
+make baseline-regression       # the refactor did not move the mid-term
+make copy-task                 # the bottleneck in miniature, ~1 min
+make data-endterm              # prepare both corpora with no mismatch filter
+make endterm-multi30k          # Tier 0: {fwd,rev} x {base,attn} x 3 seeds, ~1.2 h
+make endterm-wmt               # Tier 1: reversed, both arms, ~10.5 h
+make results-endterm-multi30k results-endterm-wmt
+make alignments probe          # Fig. 3 analogue, per-length perplexity
+```
+
+Still out of scope: the Transformer contrast beyond prose, and SMT 1000-best
+rescoring (Table 2).
