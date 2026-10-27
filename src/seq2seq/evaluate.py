@@ -33,7 +33,16 @@ from .train import evaluate_perplexity, load_prepared
 from .utils import load_checkpoint, pick_device, work_dir
 from .vocab import Vocab
 
+# The mid-term's buckets. Kept exactly so re-rendering mid-term figures is a
+# no-op.
 LENGTH_BUCKETS = [(1, 10), (11, 20), (21, 30), (31, 40), (41, 10**6)]
+
+# The end-term raises the training cap from 50 to 100 tokens, and the bottleneck
+# is meant to bite hardest at the top end -- so resolve the tail instead of
+# lumping everything over 40 tokens into one bucket.
+END_TERM_BUCKETS = [(1, 10), (11, 20), (21, 30), (31, 40), (41, 50), (51, 70), (71, 10**6)]
+
+BUCKET_SETS = {"midterm": LENGTH_BUCKETS, "endterm": END_TERM_BUCKETS}
 
 
 def load_models(ckpt_paths, src_vocab, tgt_vocab, device):
@@ -65,9 +74,9 @@ def score_detokenized(hyps: list[str], refs: list[str]):
     return res.score, bleu.get_signature().format()
 
 
-def bleu_by_length(src_tok, hyps_tok, refs_tok):
+def bleu_by_length(src_tok, hyps_tok, refs_tok, buckets=None):
     out = []
-    for lo, hi in LENGTH_BUCKETS:
+    for lo, hi in (buckets or LENGTH_BUCKETS):
         idx = [i for i, s in enumerate(src_tok) if lo <= len(s.split()) <= hi]
         if len(idx) < 5:
             continue
@@ -79,6 +88,7 @@ def bleu_by_length(src_tok, hyps_tok, refs_tok):
 def run_eval(
     ckpts, data_dir, beam_size, reverse_source, device=None, limit=0,
     length_norm=0.0, tgt_lang="fr", src_lang="en", out_dir=None, tag="",
+    buckets=None, max_decode_len=100,
 ):
     device = pick_device(device or "auto")
     data_dir = Path(data_dir)
@@ -96,7 +106,7 @@ def run_eval(
         ids, _ = beam_search(
             models, test.src_ids[i], src_vocab, tgt_vocab,
             beam_size=beam_size, reverse_source=reverse_source,
-            length_norm=length_norm, device=device,
+            length_norm=length_norm, device=device, max_decode_len=max_decode_len,
         )
         hyps_tok.append(" ".join(tgt_vocab.decode(ids)))
     decode_secs = time.time() - t0
@@ -120,6 +130,7 @@ def run_eval(
         "beam_size": beam_size,
         "reverse_source": reverse_source,
         "length_norm": length_norm,
+        "max_decode_len": max_decode_len,
         "n_sentences": n,
         "bleu_tok": round(bleu_tok, 2),
         "bleu_detok": round(bleu_detok, 2),
@@ -127,8 +138,12 @@ def run_eval(
         "sig_tok": sig_tok,
         "sig_detok": sig_detok,
         "decode_seconds": round(decode_secs, 1),
-        "bleu_by_length": bleu_by_length(src_tok, hyps_tok, refs_tok),
+        "bleu_by_length": bleu_by_length(src_tok, hyps_tok, refs_tok, buckets),
         "dev_ppl_at_checkpoint": [m.get("dev_ppl") for m in metas],
+        # Which arm produced this row; read back from the checkpoint's own
+        # config, so a results table can never mislabel a model.
+        "attention": metas[0]["config"].get("attention") or "none",
+        "n_params": sum(p.numel() for p in models[0].parameters()),
     }
 
     if out_dir:
@@ -158,12 +173,17 @@ def main():
     ap.add_argument("--tgt-lang", default="fr")
     ap.add_argument("--out-dir", default=None)
     ap.add_argument("--tag", default="")
+    ap.add_argument("--buckets", default="midterm", choices=sorted(BUCKET_SETS))
+    # 100 is what the mid-term decoded with; the end-term raises it because its
+    # training cap is 100 tokens, so a faithful hypothesis can be that long too.
+    ap.add_argument("--max-decode-len", dest="max_decode_len", type=int, default=100)
     args = ap.parse_args()
 
     res = run_eval(
         args.checkpoint, str(Path(args.data_dir).expanduser()), args.beam,
         args.reverse_source, args.device, args.limit, args.length_norm,
         args.tgt_lang, args.src_lang, args.out_dir, args.tag,
+        BUCKET_SETS[args.buckets], args.max_decode_len,
     )
     print(json.dumps(res, indent=2))
 

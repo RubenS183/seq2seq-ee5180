@@ -16,6 +16,13 @@ reduces exactly to greedy decoding, which `tests/test_smoke.py` asserts.
 Ensembling averages per-step log-probabilities across models (a geometric mean
 of the member distributions); the members differ only in random init and
 minibatch order, as in the paper.
+
+Both arms of the end-term share this one implementation. Everything the decoder
+carries between steps lives in `model.DecodeState` -- for the paper's model just
+the LSTM's (h, c), for the attention model also the encoder memory bank -- so the
+beam bookkeeping below never has to know which architecture it is driving. A
+second copy of this function would be a second place for beam(B=1) to stop being
+greedy decoding.
 """
 from __future__ import annotations
 
@@ -53,8 +60,9 @@ def beam_search(
     src = torch.tensor([s], dtype=torch.long, device=device)
     src_len = torch.tensor([len(s)], dtype=torch.long, device=device)
 
-    # One encoder state per model, expanded to the current beam width.
-    states = [m.encode(src, src_len) for m in models]
+    # One decode state per model. It starts one hypothesis wide; `reorder`
+    # below grows it to the beam width on the first step.
+    states = [m.encode_for_decode(src, src_len) for m in models]
 
     beam_tokens = torch.full((1, 1), tgt_vocab.sos_id, dtype=torch.long, device=device)
     beam_scores = torch.zeros(1, device=device)
@@ -68,7 +76,7 @@ def beam_search(
         # Average log-probs over the ensemble members.
         step_logprobs, new_states = None, []
         for m, state in zip(models, states):
-            logits, st = m.decoder(beam_tokens[:, -1:], state)
+            logits, st = m.decode_step(beam_tokens[:, -1:], state)
             lp = F.log_softmax(logits[:, -1, :].float(), dim=-1)
             step_logprobs = lp if step_logprobs is None else step_logprobs + lp
             new_states.append(st)
@@ -100,7 +108,9 @@ def beam_search(
         beam_tokens = next_tokens[keep]
         beam_scores = top_scores[keep]
         survivors = beam_idx[keep]
-        states = [(h[:, survivors, :], c[:, survivors, :]) for (h, c) in new_states]
+        # Reindexes the recurrent state and, for the attention arm, the memory
+        # bank and mask alongside it.
+        states = [st.reorder(survivors) for st in new_states]
 
         # Admissible early stop: log-probabilities are negative, so extending a
         # partial hypothesis can only lower its score. Once the best partial is
@@ -133,13 +143,13 @@ def greedy_decode(models, src_ids, src_vocab, tgt_vocab, reverse_source=False,
     s = s + [src_vocab.eos_id]
     src = torch.tensor([s], dtype=torch.long, device=device)
     src_len = torch.tensor([len(s)], dtype=torch.long, device=device)
-    states = [m.encode(src, src_len) for m in models]
+    states = [m.encode_for_decode(src, src_len) for m in models]
     token = torch.tensor([[tgt_vocab.sos_id]], dtype=torch.long, device=device)
     out, score = [], 0.0
     for _ in range(min(max_decode_len, 2 * len(src_ids) + 5)):
         lp_sum, new_states = None, []
         for m, state in zip(models, states):
-            logits, st = m.decoder(token, state)
+            logits, st = m.decode_step(token, state)
             lp = torch.log_softmax(logits[:, -1, :].float(), dim=-1)
             lp_sum = lp if lp_sum is None else lp_sum + lp
             new_states.append(st)

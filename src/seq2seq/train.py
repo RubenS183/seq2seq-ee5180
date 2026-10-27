@@ -14,6 +14,11 @@ Held exactly as in Sutskever et al. sec. 3.4:
 
 Reported perplexity is per-token, exp(sum NLL / target tokens), comparable in
 kind to the paper's 5.8 (forward) vs 4.7 (reversed).
+
+The end-term's attention arm trains through this same loop with the same
+optimiser, schedule and clipping -- `attention: bahdanau` in the config is the
+only change -- so a difference between the arms cannot be an optimisation
+artefact.
 """
 from __future__ import annotations
 
@@ -138,7 +143,8 @@ def train(cfg: dict) -> Path:
         print(f"[resume] from epoch {start_epoch} (best dev ppl {best_ppl:.3f})")
 
     print(
-        f"[setup] device={device} reverse_source={reverse} loss_chunk={loss_chunk or 'off'} "
+        f"[setup] device={device} reverse_source={reverse} "
+        f"attention={cfg.get('attention') or 'none'} loss_chunk={loss_chunk or 'off'} "
         f"params={model.count_parameters()/1e6:.1f}M "
         f"| train={len(train_ds)} dev={len(dev_ds)} | src_vocab={len(src_vocab)} tgt_vocab={len(tgt_vocab)}"
     )
@@ -233,12 +239,17 @@ def main():
     ap.add_argument("--device", default=None)
     ap.add_argument("--run-dir", dest="run_dir", default=None)
     ap.add_argument("--data-dir", dest="data_dir", default=None)
+    ap.add_argument("--attention", default=None, choices=["none", "bahdanau"],
+                    help="end-term arm; omitted means the config decides")
     args = ap.parse_args()
 
     cfg = load_config(args.config, vars(args))
     if args.run_dir is None:
         tag = "rev" if cfg["reverse_source"] else "fwd"
-        cfg["run_dir"] = str(Path(cfg["run_dir"]) / f"{tag}_seed{cfg['seed']}")
+        # No suffix without attention, so the mid-term's {dir}_seed{N} layout --
+        # which the Makefile and make_results.py both resolve -- is untouched.
+        arm = "_attn" if cfg.get("attention") not in (None, "none") else ""
+        cfg["run_dir"] = str(Path(cfg["run_dir"]) / f"{tag}{arm}_seed{cfg['seed']}")
     train(cfg)
 
 
