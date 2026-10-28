@@ -404,6 +404,53 @@ function codeBlock(s, lines, opt = {}) {
   s.addNotes("If the fixed-vector curve falls across the length buckets and the attention curve stays flat, the fixed-length vector was the binding constraint. If both fall equally, something else is — and we would say so.");
 }
 
+// ================================================ 13b. where it does NOT show
+{
+  const s = pres.addSlide();
+  titleSlide(s, "Where the curve does NOT show it — and why", "THE NULL RESULT");
+  s.addText("Same code, same flag, same grid. On Multi30k the length curve does not evidence the bottleneck. Reporting that is the point: the claim is about long sources, and Multi30k has none.", {
+    x: M, y: 1.58, w: W - 2 * M, h: 0.5, isTextBox: true, margin: 0,
+    fontFace: BODY_FONT, fontSize: 15, color: INK_SOFT,
+  });
+
+  // Widest shared span of each tier's own buckets, read off the data.
+  const gainSpan = rows => {
+    const b = pick(rows, "rev", "base", 12), a = pick(rows, "rev", "attn", 12);
+    if (!b || !a) return null;
+    const ba = Object.fromEntries((a.bleu_by_length || []).map(x => [x.bucket, x.bleu_tok]));
+    const buckets = (b.bleu_by_length || []).filter(x => x.bucket in ba);
+    if (buckets.length < 2) return null;
+    const lo = buckets[0], hi = buckets[buckets.length - 1];
+    return {
+      loB: lo.bucket, hiB: hi.bucket, hiN: hi.n,
+      loGain: ba[lo.bucket] - lo.bleu_tok,
+      hiGain: ba[hi.bucket] - hi.bleu_tok,
+      longest: Math.max(...buckets.map(x => x.n > 0 ? parseInt(String(x.bucket).split("-").pop(), 10) : 0)),
+    };
+  };
+  const gw = gainSpan(wmt), gm = gainSpan(m30);
+  const verdict = g => !g ? "—"
+    : (g.hiGain > g.loGain ? "widens with length" : "does NOT widen");
+  const span = g => !g ? "—" : `${f2(g.loGain)} at ${g.loB}  \u2192  ${f2(g.hiGain)} at ${g.hiB}`;
+
+  table(s, ["tier", "longest bucket", "sentences in it", "attention's gain", "verdict"], [
+    ["Multi30k (captions)", gm ? gm.hiB : "—", gm ? String(gm.hiN) : "—", span(gm),
+     { text: verdict(gm), options: { bold: true, color: FWD } }],
+    ["WMT'14 (news)", gw ? gw.hiB : "—", gw ? String(gw.hiN) : "—", span(gw),
+     { text: verdict(gw), options: { bold: true, color: GOOD } }],
+  ], { y: 2.2, colW: [3.0, 1.9, 1.9, 3.3, 1.99], rowH: 0.5 });
+
+  body(s, [
+    `Multi30k is image captions: its longest bucket is ${gm ? gm.hiB : "21-30"} tokens and holds ${gm ? gm.hiN : 52} of 1,000 sentences. There is nothing past ${gm ? gm.longest : 30} tokens to bottleneck.`,
+    "So its arm-level gain is real, but it is NOT explained by source length — a 13-token caption fits in 2,048 numbers either way.",
+    `WMT'14 reaches ${gw ? gw.longest : 70} tokens, which is the only tier here where a fixed vector is actually under pressure — and there the gain widens monotonically.`,
+    "Multi30k still earns its place: 3 seeds and all four cells, so it carries the error bars and the reversal \u00d7 attention interaction that WMT's single run cannot.",
+  ], { y: 3.5, h: 2.5, fontSize: 14 });
+
+  note(s, "The generator states this verdict itself from the bucket data, rather than leaving a conditional for the reader to resolve favourably.");
+  s.addNotes("This is the slide to use if asked whether we only reported the tier that agreed with us. We ran the same grid on both, and the cheap tier disagrees on the length claim for a reason we can state: it has no long sentences. The honest reading is that Multi30k tests the plumbing and the seed variance, WMT tests the bottleneck.");
+}
+
 // ============================================================ 14. alignments
 {
   const s = pres.addSlide();
