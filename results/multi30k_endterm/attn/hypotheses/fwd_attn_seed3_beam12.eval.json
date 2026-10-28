@@ -1,0 +1,39 @@
+{
+  "checkpoints": [
+    "/Users/rubenstalin/ee5180-work/runs/multi30k_endterm/fwd_attn_seed3/best.pt"
+  ],
+  "n_models": 1,
+  "beam_size": 12,
+  "reverse_source": false,
+  "length_norm": 0.0,
+  "max_decode_len": 150,
+  "n_sentences": 1000,
+  "bleu_tok": 23.63,
+  "bleu_detok": 22.84,
+  "test_ppl": 6.405,
+  "sig_tok": "nrefs:1|case:mixed|eff:no|tok:none|smooth:exp|version:2.6.0",
+  "sig_detok": "nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0",
+  "decode_seconds": 37.4,
+  "bleu_by_length": [
+    {
+      "bucket": "1-10",
+      "n": 287,
+      "bleu_tok": 28.244878952157343
+    },
+    {
+      "bucket": "11-20",
+      "n": 659,
+      "bleu_tok": 23.79944756242283
+    },
+    {
+      "bucket": "21-30",
+      "n": 52,
+      "bleu_tok": 13.527956961840504
+    }
+  ],
+  "dev_ppl_at_checkpoint": [
+    6.87484627097094
+  ],
+  "attention": "bahdanau",
+  "n_params": 10385680
+}

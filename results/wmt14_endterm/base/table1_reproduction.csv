@@ -1,0 +1,4 @@
+direction,n_models,seeds,beam,bleu_tok,bleu_detok,test_ppl,n_sentences,paper_bleu
+rev,1,1,1,6.56,4.53,24.067,3003,
+rev,1,1,2,6.82,4.79,24.067,3003,
+rev,1,1,12,6.36,4.62,24.067,3003,30.59

@@ -1,0 +1,830 @@
+[
+  {
+    "checkpoints": [
+      "/Users/rubenstalin/ee5180-work/runs/multi30k_endterm/fwd_attn_seed1/best.pt"
+    ],
+    "n_models": 1,
+    "beam_size": 1,
+    "reverse_source": false,
+    "length_norm": 0.0,
+    "max_decode_len": 150,
+    "n_sentences": 1000,
+    "bleu_tok": 23.07,
+    "bleu_detok": 21.98,
+    "test_ppl": 6.282,
+    "sig_tok": "nrefs:1|case:mixed|eff:no|tok:none|smooth:exp|version:2.6.0",
+    "sig_detok": "nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0",
+    "decode_seconds": 13.2,
+    "bleu_by_length": [
+      {
+        "bucket": "1-10",
+        "n": 287,
+        "bleu_tok": 25.773106636589752
+      },
+      {
+        "bucket": "11-20",
+        "n": 659,
+        "bleu_tok": 23.51836291328119
+      },
+      {
+        "bucket": "21-30",
+        "n": 52,
+        "bleu_tok": 13.313211192012268
+      }
+    ],
+    "dev_ppl_at_checkpoint": [
+      6.77081336254827
+    ],
+    "attention": "bahdanau",
+    "n_params": 10385680,
+    "direction": "fwd",
+    "seeds": [
+      1
+    ],
+    "arm": "attn"
+  },
+  {
+    "checkpoints": [
+      "/Users/rubenstalin/ee5180-work/runs/multi30k_endterm/fwd_attn_seed1/best.pt"
+    ],
+    "n_models": 1,
+    "beam_size": 2,
+    "reverse_source": false,
+    "length_norm": 0.0,
+    "max_decode_len": 150,
+    "n_sentences": 1000,
+    "bleu_tok": 23.89,
+    "bleu_detok": 23.06,
+    "test_ppl": 6.282,
+    "sig_tok": "nrefs:1|case:mixed|eff:no|tok:none|smooth:exp|version:2.6.0",
+    "sig_detok": "nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0",
+    "decode_seconds": 24.6,
+    "bleu_by_length": [
+      {
+        "bucket": "1-10",
+        "n": 287,
+        "bleu_tok": 28.408823201356935
+      },
+      {
+        "bucket": "11-20",
+        "n": 659,
+        "bleu_tok": 24.291427641423052
+      },
+      {
+        "bucket": "21-30",
+        "n": 52,
+        "bleu_tok": 12.21478680874389
+      }
+    ],
+    "dev_ppl_at_checkpoint": [
+      6.77081336254827
+    ],
+    "attention": "bahdanau",
+    "n_params": 10385680,
+    "direction": "fwd",
+    "seeds": [
+      1
+    ],
+    "arm": "attn"
+  },
+  {
+    "checkpoints": [
+      "/Users/rubenstalin/ee5180-work/runs/multi30k_endterm/fwd_attn_seed1/best.pt"
+    ],
+    "n_models": 1,
+    "beam_size": 12,
+    "reverse_source": false,
+    "length_norm": 0.0,
+    "max_decode_len": 150,
+    "n_sentences": 1000,
+    "bleu_tok": 23.9,
+    "bleu_detok": 23.17,
+    "test_ppl": 6.282,
+    "sig_tok": "nrefs:1|case:mixed|eff:no|tok:none|smooth:exp|version:2.6.0",
+    "sig_detok": "nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0",
+    "decode_seconds": 37.4,
+    "bleu_by_length": [
+      {
+        "bucket": "1-10",
+        "n": 287,
+        "bleu_tok": 28.524702927742247
+      },
+      {
+        "bucket": "11-20",
+        "n": 659,
+        "bleu_tok": 24.30046756247333
+      },
+      {
+        "bucket": "21-30",
+        "n": 52,
+        "bleu_tok": 11.817673773602653
+      }
+    ],
+    "dev_ppl_at_checkpoint": [
+      6.77081336254827
+    ],
+    "attention": "bahdanau",
+    "n_params": 10385680,
+    "direction": "fwd",
+    "seeds": [
+      1
+    ],
+    "arm": "attn"
+  },
+  {
+    "checkpoints": [
+      "/Users/rubenstalin/ee5180-work/runs/multi30k_endterm/fwd_attn_seed1/best.pt"
+    ],
+    "n_models": 1,
+    "beam_size": 12,
+    "reverse_source": false,
+    "length_norm": 0.0,
+    "max_decode_len": 150,
+    "n_sentences": 1000,
+    "bleu_tok": 23.9,
+    "bleu_detok": 23.17,
+    "test_ppl": 6.282,
+    "sig_tok": "nrefs:1|case:mixed|eff:no|tok:none|smooth:exp|version:2.6.0",
+    "sig_detok": "nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0",
+    "decode_seconds": 37.6,
+    "bleu_by_length": [
+      {
+        "bucket": "1-10",
+        "n": 287,
+        "bleu_tok": 28.524702927742247
+      },
+      {
+        "bucket": "11-20",
+        "n": 659,
+        "bleu_tok": 24.30046756247333
+      },
+      {
+        "bucket": "21-30",
+        "n": 52,
+        "bleu_tok": 11.817673773602653
+      }
+    ],
+    "dev_ppl_at_checkpoint": [
+      6.77081336254827
+    ],
+    "attention": "bahdanau",
+    "n_params": 10385680,
+    "direction": "fwd",
+    "seeds": [
+      1
+    ],
+    "arm": "attn"
+  },
+  {
+    "checkpoints": [
+      "/Users/rubenstalin/ee5180-work/runs/multi30k_endterm/fwd_attn_seed2/best.pt"
+    ],
+    "n_models": 1,
+    "beam_size": 12,
+    "reverse_source": false,
+    "length_norm": 0.0,
+    "max_decode_len": 150,
+    "n_sentences": 1000,
+    "bleu_tok": 23.01,
+    "bleu_detok": 22.36,
+    "test_ppl": 6.372,
+    "sig_tok": "nrefs:1|case:mixed|eff:no|tok:none|smooth:exp|version:2.6.0",
+    "sig_detok": "nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0",
+    "decode_seconds": 37.3,
+    "bleu_by_length": [
+      {
+        "bucket": "1-10",
+        "n": 287,
+        "bleu_tok": 27.225881948030306
+      },
+      {
+        "bucket": "11-20",
+        "n": 659,
+        "bleu_tok": 23.62088272557644
+      },
+      {
+        "bucket": "21-30",
+        "n": 52,
+        "bleu_tok": 9.80679355959386
+      }
+    ],
+    "dev_ppl_at_checkpoint": [
+      6.83005149649641
+    ],
+    "attention": "bahdanau",
+    "n_params": 10385680,
+    "direction": "fwd",
+    "seeds": [
+      2
+    ],
+    "arm": "attn"
+  },
+  {
+    "checkpoints": [
+      "/Users/rubenstalin/ee5180-work/runs/multi30k_endterm/fwd_attn_seed3/best.pt"
+    ],
+    "n_models": 1,
+    "beam_size": 12,
+    "reverse_source": false,
+    "length_norm": 0.0,
+    "max_decode_len": 150,
+    "n_sentences": 1000,
+    "bleu_tok": 23.63,
+    "bleu_detok": 22.84,
+    "test_ppl": 6.405,
+    "sig_tok": "nrefs:1|case:mixed|eff:no|tok:none|smooth:exp|version:2.6.0",
+    "sig_detok": "nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0",
+    "decode_seconds": 37.4,
+    "bleu_by_length": [
+      {
+        "bucket": "1-10",
+        "n": 287,
+        "bleu_tok": 28.244878952157343
+      },
+      {
+        "bucket": "11-20",
+        "n": 659,
+        "bleu_tok": 23.79944756242283
+      },
+      {
+        "bucket": "21-30",
+        "n": 52,
+        "bleu_tok": 13.527956961840504
+      }
+    ],
+    "dev_ppl_at_checkpoint": [
+      6.87484627097094
+    ],
+    "attention": "bahdanau",
+    "n_params": 10385680,
+    "direction": "fwd",
+    "seeds": [
+      3
+    ],
+    "arm": "attn"
+  },
+  {
+    "checkpoints": [
+      "/Users/rubenstalin/ee5180-work/runs/multi30k_endterm/fwd_attn_seed1/best.pt",
+      "/Users/rubenstalin/ee5180-work/runs/multi30k_endterm/fwd_attn_seed2/best.pt",
+      "/Users/rubenstalin/ee5180-work/runs/multi30k_endterm/fwd_attn_seed3/best.pt"
+    ],
+    "n_models": 3,
+    "beam_size": 1,
+    "reverse_source": false,
+    "length_norm": 0.0,
+    "max_decode_len": 150,
+    "n_sentences": 1000,
+    "bleu_tok": 24.82,
+    "bleu_detok": 23.95,
+    "test_ppl": null,
+    "sig_tok": "nrefs:1|case:mixed|eff:no|tok:none|smooth:exp|version:2.6.0",
+    "sig_detok": "nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0",
+    "decode_seconds": 36.9,
+    "bleu_by_length": [
+      {
+        "bucket": "1-10",
+        "n": 287,
+        "bleu_tok": 28.134851968302545
+      },
+      {
+        "bucket": "11-20",
+        "n": 659,
+        "bleu_tok": 25.325634332977852
+      },
+      {
+        "bucket": "21-30",
+        "n": 52,
+        "bleu_tok": 13.380126628226924
+      }
+    ],
+    "dev_ppl_at_checkpoint": [
+      6.77081336254827,
+      6.83005149649641,
+      6.87484627097094
+    ],
+    "attention": "bahdanau",
+    "n_params": 10385680,
+    "direction": "fwd",
+    "seeds": [
+      1,
+      2,
+      3
+    ],
+    "arm": "attn"
+  },
+  {
+    "checkpoints": [
+      "/Users/rubenstalin/ee5180-work/runs/multi30k_endterm/fwd_attn_seed1/best.pt",
+      "/Users/rubenstalin/ee5180-work/runs/multi30k_endterm/fwd_attn_seed2/best.pt",
+      "/Users/rubenstalin/ee5180-work/runs/multi30k_endterm/fwd_attn_seed3/best.pt"
+    ],
+    "n_models": 3,
+    "beam_size": 2,
+    "reverse_source": false,
+    "length_norm": 0.0,
+    "max_decode_len": 150,
+    "n_sentences": 1000,
+    "bleu_tok": 25.86,
+    "bleu_detok": 25.15,
+    "test_ppl": null,
+    "sig_tok": "nrefs:1|case:mixed|eff:no|tok:none|smooth:exp|version:2.6.0",
+    "sig_detok": "nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0",
+    "decode_seconds": 72.6,
+    "bleu_by_length": [
+      {
+        "bucket": "1-10",
+        "n": 287,
+        "bleu_tok": 31.208902471497076
+      },
+      {
+        "bucket": "11-20",
+        "n": 659,
+        "bleu_tok": 25.861649110291147
+      },
+      {
+        "bucket": "21-30",
+        "n": 52,
+        "bleu_tok": 14.467132479300092
+      }
+    ],
+    "dev_ppl_at_checkpoint": [
+      6.77081336254827,
+      6.83005149649641,
+      6.87484627097094
+    ],
+    "attention": "bahdanau",
+    "n_params": 10385680,
+    "direction": "fwd",
+    "seeds": [
+      1,
+      2,
+      3
+    ],
+    "arm": "attn"
+  },
+  {
+    "checkpoints": [
+      "/Users/rubenstalin/ee5180-work/runs/multi30k_endterm/fwd_attn_seed1/best.pt",
+      "/Users/rubenstalin/ee5180-work/runs/multi30k_endterm/fwd_attn_seed2/best.pt",
+      "/Users/rubenstalin/ee5180-work/runs/multi30k_endterm/fwd_attn_seed3/best.pt"
+    ],
+    "n_models": 3,
+    "beam_size": 12,
+    "reverse_source": false,
+    "length_norm": 0.0,
+    "max_decode_len": 150,
+    "n_sentences": 1000,
+    "bleu_tok": 25.83,
+    "bleu_detok": 25.07,
+    "test_ppl": null,
+    "sig_tok": "nrefs:1|case:mixed|eff:no|tok:none|smooth:exp|version:2.6.0",
+    "sig_detok": "nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0",
+    "decode_seconds": 105.4,
+    "bleu_by_length": [
+      {
+        "bucket": "1-10",
+        "n": 287,
+        "bleu_tok": 31.346016509243842
+      },
+      {
+        "bucket": "11-20",
+        "n": 659,
+        "bleu_tok": 25.852855662458918
+      },
+      {
+        "bucket": "21-30",
+        "n": 52,
+        "bleu_tok": 14.74719501038389
+      }
+    ],
+    "dev_ppl_at_checkpoint": [
+      6.77081336254827,
+      6.83005149649641,
+      6.87484627097094
+    ],
+    "attention": "bahdanau",
+    "n_params": 10385680,
+    "direction": "fwd",
+    "seeds": [
+      1,
+      2,
+      3
+    ],
+    "arm": "attn"
+  },
+  {
+    "checkpoints": [
+      "/Users/rubenstalin/ee5180-work/runs/multi30k_endterm/rev_attn_seed1/best.pt"
+    ],
+    "n_models": 1,
+    "beam_size": 1,
+    "reverse_source": true,
+    "length_norm": 0.0,
+    "max_decode_len": 150,
+    "n_sentences": 1000,
+    "bleu_tok": 27.62,
+    "bleu_detok": 26.2,
+    "test_ppl": 5.677,
+    "sig_tok": "nrefs:1|case:mixed|eff:no|tok:none|smooth:exp|version:2.6.0",
+    "sig_detok": "nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0",
+    "decode_seconds": 13.2,
+    "bleu_by_length": [
+      {
+        "bucket": "1-10",
+        "n": 287,
+        "bleu_tok": 30.499717531921057
+      },
+      {
+        "bucket": "11-20",
+        "n": 659,
+        "bleu_tok": 28.187695347132067
+      },
+      {
+        "bucket": "21-30",
+        "n": 52,
+        "bleu_tok": 14.602314553150473
+      }
+    ],
+    "dev_ppl_at_checkpoint": [
+      6.181574863170126
+    ],
+    "attention": "bahdanau",
+    "n_params": 10385680,
+    "direction": "rev",
+    "seeds": [
+      1
+    ],
+    "arm": "attn"
+  },
+  {
+    "checkpoints": [
+      "/Users/rubenstalin/ee5180-work/runs/multi30k_endterm/rev_attn_seed1/best.pt"
+    ],
+    "n_models": 1,
+    "beam_size": 2,
+    "reverse_source": true,
+    "length_norm": 0.0,
+    "max_decode_len": 150,
+    "n_sentences": 1000,
+    "bleu_tok": 28.17,
+    "bleu_detok": 27.23,
+    "test_ppl": 5.677,
+    "sig_tok": "nrefs:1|case:mixed|eff:no|tok:none|smooth:exp|version:2.6.0",
+    "sig_detok": "nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0",
+    "decode_seconds": 24.3,
+    "bleu_by_length": [
+      {
+        "bucket": "1-10",
+        "n": 287,
+        "bleu_tok": 31.875184047787588
+      },
+      {
+        "bucket": "11-20",
+        "n": 659,
+        "bleu_tok": 29.026785543207414
+      },
+      {
+        "bucket": "21-30",
+        "n": 52,
+        "bleu_tok": 14.201486805905677
+      }
+    ],
+    "dev_ppl_at_checkpoint": [
+      6.181574863170126
+    ],
+    "attention": "bahdanau",
+    "n_params": 10385680,
+    "direction": "rev",
+    "seeds": [
+      1
+    ],
+    "arm": "attn"
+  },
+  {
+    "checkpoints": [
+      "/Users/rubenstalin/ee5180-work/runs/multi30k_endterm/rev_attn_seed1/best.pt"
+    ],
+    "n_models": 1,
+    "beam_size": 12,
+    "reverse_source": true,
+    "length_norm": 0.0,
+    "max_decode_len": 150,
+    "n_sentences": 1000,
+    "bleu_tok": 27.99,
+    "bleu_detok": 27.16,
+    "test_ppl": 5.677,
+    "sig_tok": "nrefs:1|case:mixed|eff:no|tok:none|smooth:exp|version:2.6.0",
+    "sig_detok": "nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0",
+    "decode_seconds": 37.3,
+    "bleu_by_length": [
+      {
+        "bucket": "1-10",
+        "n": 287,
+        "bleu_tok": 32.915346068203775
+      },
+      {
+        "bucket": "11-20",
+        "n": 659,
+        "bleu_tok": 28.764370503852195
+      },
+      {
+        "bucket": "21-30",
+        "n": 52,
+        "bleu_tok": 12.348155447544109
+      }
+    ],
+    "dev_ppl_at_checkpoint": [
+      6.181574863170126
+    ],
+    "attention": "bahdanau",
+    "n_params": 10385680,
+    "direction": "rev",
+    "seeds": [
+      1
+    ],
+    "arm": "attn"
+  },
+  {
+    "checkpoints": [
+      "/Users/rubenstalin/ee5180-work/runs/multi30k_endterm/rev_attn_seed1/best.pt"
+    ],
+    "n_models": 1,
+    "beam_size": 12,
+    "reverse_source": true,
+    "length_norm": 0.0,
+    "max_decode_len": 150,
+    "n_sentences": 1000,
+    "bleu_tok": 27.99,
+    "bleu_detok": 27.16,
+    "test_ppl": 5.677,
+    "sig_tok": "nrefs:1|case:mixed|eff:no|tok:none|smooth:exp|version:2.6.0",
+    "sig_detok": "nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0",
+    "decode_seconds": 37.2,
+    "bleu_by_length": [
+      {
+        "bucket": "1-10",
+        "n": 287,
+        "bleu_tok": 32.915346068203775
+      },
+      {
+        "bucket": "11-20",
+        "n": 659,
+        "bleu_tok": 28.764370503852195
+      },
+      {
+        "bucket": "21-30",
+        "n": 52,
+        "bleu_tok": 12.348155447544109
+      }
+    ],
+    "dev_ppl_at_checkpoint": [
+      6.181574863170126
+    ],
+    "attention": "bahdanau",
+    "n_params": 10385680,
+    "direction": "rev",
+    "seeds": [
+      1
+    ],
+    "arm": "attn"
+  },
+  {
+    "checkpoints": [
+      "/Users/rubenstalin/ee5180-work/runs/multi30k_endterm/rev_attn_seed2/best.pt"
+    ],
+    "n_models": 1,
+    "beam_size": 12,
+    "reverse_source": true,
+    "length_norm": 0.0,
+    "max_decode_len": 150,
+    "n_sentences": 1000,
+    "bleu_tok": 24.99,
+    "bleu_detok": 24.33,
+    "test_ppl": 6.067,
+    "sig_tok": "nrefs:1|case:mixed|eff:no|tok:none|smooth:exp|version:2.6.0",
+    "sig_detok": "nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0",
+    "decode_seconds": 37.2,
+    "bleu_by_length": [
+      {
+        "bucket": "1-10",
+        "n": 287,
+        "bleu_tok": 31.23860345105759
+      },
+      {
+        "bucket": "11-20",
+        "n": 659,
+        "bleu_tok": 25.24860586408011
+      },
+      {
+        "bucket": "21-30",
+        "n": 52,
+        "bleu_tok": 10.439862911991725
+      }
+    ],
+    "dev_ppl_at_checkpoint": [
+      6.5624324995397485
+    ],
+    "attention": "bahdanau",
+    "n_params": 10385680,
+    "direction": "rev",
+    "seeds": [
+      2
+    ],
+    "arm": "attn"
+  },
+  {
+    "checkpoints": [
+      "/Users/rubenstalin/ee5180-work/runs/multi30k_endterm/rev_attn_seed3/best.pt"
+    ],
+    "n_models": 1,
+    "beam_size": 12,
+    "reverse_source": true,
+    "length_norm": 0.0,
+    "max_decode_len": 150,
+    "n_sentences": 1000,
+    "bleu_tok": 24.2,
+    "bleu_detok": 23.36,
+    "test_ppl": 6.223,
+    "sig_tok": "nrefs:1|case:mixed|eff:no|tok:none|smooth:exp|version:2.6.0",
+    "sig_detok": "nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0",
+    "decode_seconds": 37.1,
+    "bleu_by_length": [
+      {
+        "bucket": "1-10",
+        "n": 287,
+        "bleu_tok": 29.476354106199484
+      },
+      {
+        "bucket": "11-20",
+        "n": 659,
+        "bleu_tok": 24.530573470363148
+      },
+      {
+        "bucket": "21-30",
+        "n": 52,
+        "bleu_tok": 11.000058669676378
+      }
+    ],
+    "dev_ppl_at_checkpoint": [
+      6.69964643285141
+    ],
+    "attention": "bahdanau",
+    "n_params": 10385680,
+    "direction": "rev",
+    "seeds": [
+      3
+    ],
+    "arm": "attn"
+  },
+  {
+    "checkpoints": [
+      "/Users/rubenstalin/ee5180-work/runs/multi30k_endterm/rev_attn_seed1/best.pt",
+      "/Users/rubenstalin/ee5180-work/runs/multi30k_endterm/rev_attn_seed2/best.pt",
+      "/Users/rubenstalin/ee5180-work/runs/multi30k_endterm/rev_attn_seed3/best.pt"
+    ],
+    "n_models": 3,
+    "beam_size": 1,
+    "reverse_source": true,
+    "length_norm": 0.0,
+    "max_decode_len": 150,
+    "n_sentences": 1000,
+    "bleu_tok": 29.13,
+    "bleu_detok": 28.03,
+    "test_ppl": null,
+    "sig_tok": "nrefs:1|case:mixed|eff:no|tok:none|smooth:exp|version:2.6.0",
+    "sig_detok": "nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0",
+    "decode_seconds": 36.3,
+    "bleu_by_length": [
+      {
+        "bucket": "1-10",
+        "n": 287,
+        "bleu_tok": 32.64796256932404
+      },
+      {
+        "bucket": "11-20",
+        "n": 659,
+        "bleu_tok": 29.493275498747334
+      },
+      {
+        "bucket": "21-30",
+        "n": 52,
+        "bleu_tok": 16.686466273045916
+      }
+    ],
+    "dev_ppl_at_checkpoint": [
+      6.181574863170126,
+      6.5624324995397485,
+      6.69964643285141
+    ],
+    "attention": "bahdanau",
+    "n_params": 10385680,
+    "direction": "rev",
+    "seeds": [
+      1,
+      2,
+      3
+    ],
+    "arm": "attn"
+  },
+  {
+    "checkpoints": [
+      "/Users/rubenstalin/ee5180-work/runs/multi30k_endterm/rev_attn_seed1/best.pt",
+      "/Users/rubenstalin/ee5180-work/runs/multi30k_endterm/rev_attn_seed2/best.pt",
+      "/Users/rubenstalin/ee5180-work/runs/multi30k_endterm/rev_attn_seed3/best.pt"
+    ],
+    "n_models": 3,
+    "beam_size": 2,
+    "reverse_source": true,
+    "length_norm": 0.0,
+    "max_decode_len": 150,
+    "n_sentences": 1000,
+    "bleu_tok": 30.04,
+    "bleu_detok": 29.08,
+    "test_ppl": null,
+    "sig_tok": "nrefs:1|case:mixed|eff:no|tok:none|smooth:exp|version:2.6.0",
+    "sig_detok": "nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0",
+    "decode_seconds": 73.4,
+    "bleu_by_length": [
+      {
+        "bucket": "1-10",
+        "n": 287,
+        "bleu_tok": 34.671951437009014
+      },
+      {
+        "bucket": "11-20",
+        "n": 659,
+        "bleu_tok": 30.548434475618286
+      },
+      {
+        "bucket": "21-30",
+        "n": 52,
+        "bleu_tok": 17.22865761531764
+      }
+    ],
+    "dev_ppl_at_checkpoint": [
+      6.181574863170126,
+      6.5624324995397485,
+      6.69964643285141
+    ],
+    "attention": "bahdanau",
+    "n_params": 10385680,
+    "direction": "rev",
+    "seeds": [
+      1,
+      2,
+      3
+    ],
+    "arm": "attn"
+  },
+  {
+    "checkpoints": [
+      "/Users/rubenstalin/ee5180-work/runs/multi30k_endterm/rev_attn_seed1/best.pt",
+      "/Users/rubenstalin/ee5180-work/runs/multi30k_endterm/rev_attn_seed2/best.pt",
+      "/Users/rubenstalin/ee5180-work/runs/multi30k_endterm/rev_attn_seed3/best.pt"
+    ],
+    "n_models": 3,
+    "beam_size": 12,
+    "reverse_source": true,
+    "length_norm": 0.0,
+    "max_decode_len": 150,
+    "n_sentences": 1000,
+    "bleu_tok": 29.52,
+    "bleu_detok": 28.65,
+    "test_ppl": null,
+    "sig_tok": "nrefs:1|case:mixed|eff:no|tok:none|smooth:exp|version:2.6.0",
+    "sig_detok": "nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0",
+    "decode_seconds": 106.5,
+    "bleu_by_length": [
+      {
+        "bucket": "1-10",
+        "n": 287,
+        "bleu_tok": 34.17208857718078
+      },
+      {
+        "bucket": "11-20",
+        "n": 659,
+        "bleu_tok": 30.119168026466568
+      },
+      {
+        "bucket": "21-30",
+        "n": 52,
+        "bleu_tok": 16.05030320270869
+      }
+    ],
+    "dev_ppl_at_checkpoint": [
+      6.181574863170126,
+      6.5624324995397485,
+      6.69964643285141
+    ],
+    "attention": "bahdanau",
+    "n_params": 10385680,
+    "direction": "rev",
+    "seeds": [
+      1,
+      2,
+      3
+    ],
+    "arm": "attn"
+  }
+]

@@ -1,0 +1,54 @@
+{
+  "checkpoints": [
+    "/Users/rubenstalin/ee5180-work/runs/wmt14_endterm/rev_attn_seed1/best.pt"
+  ],
+  "n_models": 1,
+  "beam_size": 1,
+  "reverse_source": true,
+  "length_norm": 0.0,
+  "max_decode_len": 150,
+  "n_sentences": 3003,
+  "bleu_tok": 17.4,
+  "bleu_detok": 13.29,
+  "test_ppl": 10.69,
+  "sig_tok": "nrefs:1|case:mixed|eff:no|tok:none|smooth:exp|version:2.6.0",
+  "sig_detok": "nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0",
+  "decode_seconds": 374.4,
+  "bleu_by_length": [
+    {
+      "bucket": "1-10",
+      "n": 405,
+      "bleu_tok": 12.684329439476695
+    },
+    {
+      "bucket": "11-20",
+      "n": 954,
+      "bleu_tok": 17.80787139955362
+    },
+    {
+      "bucket": "21-30",
+      "n": 832,
+      "bleu_tok": 17.755636018010442
+    },
+    {
+      "bucket": "31-40",
+      "n": 535,
+      "bleu_tok": 17.11661935390483
+    },
+    {
+      "bucket": "41-50",
+      "n": 194,
+      "bleu_tok": 17.56843048690302
+    },
+    {
+      "bucket": "51-70",
+      "n": 80,
+      "bleu_tok": 17.82856925639745
+    }
+  ],
+  "dev_ppl_at_checkpoint": [
+    12.02914714449847
+  ],
+  "attention": "bahdanau",
+  "n_params": 59949312
+}

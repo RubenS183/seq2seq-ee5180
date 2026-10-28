@@ -1,0 +1,111 @@
+{
+  "split": "test",
+  "reverse_source": true,
+  "arms": {
+    "base": {
+      "checkpoint": "/Users/rubenstalin/ee5180-work/runs/wmt14_endterm/rev_seed1/best.pt",
+      "attention": "none",
+      "ppl_by_length": [
+        {
+          "bucket": "1-10",
+          "n": 405,
+          "ppl": 20.428
+        },
+        {
+          "bucket": "11-20",
+          "n": 954,
+          "ppl": 17.785
+        },
+        {
+          "bucket": "21-30",
+          "n": 832,
+          "ppl": 21.662
+        },
+        {
+          "bucket": "31-40",
+          "n": 535,
+          "ppl": 27.956
+        },
+        {
+          "bucket": "41-50",
+          "n": 194,
+          "ppl": 32.97
+        },
+        {
+          "bucket": "51-70",
+          "n": 80,
+          "ppl": 39.158
+        }
+      ],
+      "sentence_vector_norm": [
+        {
+          "bucket": "1-10",
+          "n": 405,
+          "mean_norm": 26.3991
+        },
+        {
+          "bucket": "11-20",
+          "n": 954,
+          "mean_norm": 34.0908
+        },
+        {
+          "bucket": "21-30",
+          "n": 832,
+          "mean_norm": 47.6918
+        },
+        {
+          "bucket": "31-40",
+          "n": 535,
+          "mean_norm": 63.2498
+        },
+        {
+          "bucket": "41-50",
+          "n": 194,
+          "mean_norm": 81.0987
+        },
+        {
+          "bucket": "51-70",
+          "n": 80,
+          "mean_norm": 102.6732
+        }
+      ],
+      "sentence_vector_size": 2048
+    },
+    "attn": {
+      "checkpoint": "/Users/rubenstalin/ee5180-work/runs/wmt14_endterm/rev_attn_seed1/best.pt",
+      "attention": "bahdanau",
+      "ppl_by_length": [
+        {
+          "bucket": "1-10",
+          "n": 405,
+          "ppl": 13.27
+        },
+        {
+          "bucket": "11-20",
+          "n": 954,
+          "ppl": 9.572
+        },
+        {
+          "bucket": "21-30",
+          "n": 832,
+          "ppl": 9.949
+        },
+        {
+          "bucket": "31-40",
+          "n": 535,
+          "ppl": 11.27
+        },
+        {
+          "bucket": "41-50",
+          "n": 194,
+          "ppl": 11.604
+        },
+        {
+          "bucket": "51-70",
+          "n": 80,
+          "ppl": 12.674
+        }
+      ]
+    }
+  }
+}

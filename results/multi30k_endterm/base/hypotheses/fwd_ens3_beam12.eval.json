@@ -1,0 +1,43 @@
+{
+  "checkpoints": [
+    "/Users/rubenstalin/ee5180-work/runs/multi30k_endterm/fwd_seed1/best.pt",
+    "/Users/rubenstalin/ee5180-work/runs/multi30k_endterm/fwd_seed2/best.pt",
+    "/Users/rubenstalin/ee5180-work/runs/multi30k_endterm/fwd_seed3/best.pt"
+  ],
+  "n_models": 3,
+  "beam_size": 12,
+  "reverse_source": false,
+  "length_norm": 0.0,
+  "max_decode_len": 150,
+  "n_sentences": 1000,
+  "bleu_tok": 5.62,
+  "bleu_detok": 5.35,
+  "test_ppl": null,
+  "sig_tok": "nrefs:1|case:mixed|eff:no|tok:none|smooth:exp|version:2.6.0",
+  "sig_detok": "nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0",
+  "decode_seconds": 83.2,
+  "bleu_by_length": [
+    {
+      "bucket": "1-10",
+      "n": 287,
+      "bleu_tok": 6.296243145232947
+    },
+    {
+      "bucket": "11-20",
+      "n": 659,
+      "bleu_tok": 5.695674107715207
+    },
+    {
+      "bucket": "21-30",
+      "n": 52,
+      "bleu_tok": 3.8147844700617264
+    }
+  ],
+  "dev_ppl_at_checkpoint": [
+    15.873895251281562,
+    13.992409046933462,
+    13.919320651604446
+  ],
+  "attention": "none",
+  "n_params": 9795344
+}

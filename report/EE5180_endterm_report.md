@@ -172,16 +172,101 @@ Optimiser: Adam, a controlled demonstration rather than a reported reproduction
 
 WMT'14 En-Fr, 500k pairs, 2x512, scored on the paper's own newstest2014 (3,003 sentences).
 
-*(not yet run: `make endterm-wmt` then
-`make results-endterm-wmt`)*
+
+> **Scale gap.** 0.5M pairs vs the paper's 12M; 2x512 vs 4x1000; 32k/32k vocab vs 160k/80k. Prepared with NO length-mismatch filtering and a 100-token cap. Absolute BLEU is NOT comparable to Table 1 - the direction and shape of the effects are.
+
+The two arms share their corpus, vocabulary, seed, batch order, optimiser,
+learning-rate schedule and gradient clipping. `attention: bahdanau` is the
+only difference between them.
+
+| direction | arm | beam | BLEU (tok, cased) | BLEU (detok) | test ppl | params | runs |
+|---|---|---|---|---|---|---|---|
+| reversed | fixed vector | 12 | **6.36** | 4.62 | 24.067 | 57.6M | 1 |
+| reversed | + attention | 12 | **18.49** | 14.99 | 10.690 | 59.9M | 1 |
+
+## What the arms say about the bottleneck
+
+- reversed: fixed vector **6.36** -> attention **18.49** (**+12.13** BLEU).
+
+### The shape of the length curve
+
+This is the actual bottleneck claim: a single fixed vector should lose ground
+as the source grows, and attention should not.
+
+| source length | sentences | fixed vector | + attention | gain |
+|---|---|---|---|---|
+| 1-10 | 405 | 8.01 | 13.12 | **+5.11** |
+| 11-20 | 954 | 9.11 | 19.15 | **+10.05** |
+| 21-30 | 832 | 6.50 | 18.80 | **+12.30** |
+| 31-40 | 535 | 5.28 | 18.25 | **+12.97** |
+| 41-50 | 194 | 4.15 | 18.75 | **+14.59** |
+| 51-70 | 80 | 3.55 | 18.75 | **+15.20** |
+
+- Fixed vector, 1-10 -> 51-70: 8.01 -> 3.55 (-4.46).
+- Attention,    1-10 -> 51-70: 13.12 -> 18.75 (+5.63).
+
+The gain widens with source length (+5.11 at 1-10 -> +15.20 at 51-70), which is the bottleneck claim: the longer the source, the more a single fixed vector costs.
+
+Treat the `51-70` row with care: it is 80 sentences, so its BLEU is noisy and the slope above rests largely on it.
+
+## Figures
+
+![BLEU by source length, both arms](../results/wmt14_endterm/bottleneck_by_length.png)
+
+![Arm comparison](../results/wmt14_endterm/arm_comparison.png)
+
 
 
 ## 6. Results -- multi30k_endterm
 
 Multi30k, 29k image captions, 2x256, 3 seeds -- not the paper's corpus or test set, but the only tier where we can afford error bars and the full 2x2 grid.
 
-*(not yet run: `make endterm-multi30k` then
-`make results-endterm-multi30k`)*
+
+> **Scale gap.** Multi30k (29k image captions), 2x256. Prepared with NO length-mismatch filtering. Pipeline validation plus the seed-controlled {forward,reversed} x {fixed vector, attention} grid - NOT the paper's corpus or test set.
+
+The two arms share their corpus, vocabulary, seed, batch order, optimiser,
+learning-rate schedule and gradient clipping. `attention: bahdanau` is the
+only difference between them.
+
+| direction | arm | beam | BLEU (tok, cased) | BLEU (detok) | test ppl | params | runs |
+|---|---|---|---|---|---|---|---|
+| forward | fixed vector | 12 | **4.72** ± 1.83 | 4.38 | 13.839 | 9.8M | 3 |
+| forward | + attention | 12 | **23.51** ± 0.46 | 22.79 | 6.353 | 10.4M | 3 |
+| reversed | fixed vector | 12 | **15.21** ± 0.63 | 14.85 | 9.048 | 9.8M | 3 |
+| reversed | + attention | 12 | **25.73** ± 2.00 | 24.95 | 5.989 | 10.4M | 3 |
+
+## What the arms say about the bottleneck
+
+- reversed: fixed vector **15.21** -> attention **25.73** (**+10.52** BLEU).
+- forward: fixed vector **4.72** -> attention **23.51** (**+18.80** BLEU).
+
+- The reversal gap (reversed minus forward) is **+10.49** without attention and **+2.21** with it.
+  Attention absorbs 79% of it. That is the paper's trick being made redundant: reversing the source shortens the distance between a source word and the decoder step that needs it, and attention removes the distance altogether.
+
+### The shape of the length curve
+
+This is the actual bottleneck claim: a single fixed vector should lose ground
+as the source grows, and attention should not.
+
+| source length | sentences | fixed vector | + attention | gain |
+|---|---|---|---|---|
+| 1-10 | 287 | 19.05 | 32.92 | **+13.87** |
+| 11-20 | 659 | 15.11 | 28.76 | **+13.66** |
+| 21-30 | 52 | 9.91 | 12.35 | **+2.43** |
+
+- Fixed vector, 1-10 -> 21-30: 19.05 -> 9.91 (-9.13).
+- Attention,    1-10 -> 21-30: 32.92 -> 12.35 (-20.57).
+
+**The gain does NOT widen with source length** (+13.87 at 1-10 -> +2.43 at 21-30), and the attention arm falls off at least as fast as the fixed-vector arm (-20.57 vs -9.13). At this scale and on this corpus the length curve does NOT evidence the bottleneck; the arm-level gain above is real, but it is not explained by source length.
+
+Treat the `21-30` row with care: it is 52 sentences, so its BLEU is noisy and the slope above rests largely on it.
+
+## Figures
+
+![BLEU by source length, both arms](../results/multi30k_endterm/bottleneck_by_length.png)
+
+![Arm comparison](../results/multi30k_endterm/arm_comparison.png)
+
 
 
 ## 7. The bottleneck without BLEU
@@ -189,11 +274,66 @@ Multi30k, 29k image captions, 2x256, 3 seeds -- not the paper's corpus or test s
 BLEU is a beam-mediated, n-gram view of a model. Two sharper probes, with no
 beam search in them at all.
 
-*(not yet run: `make probe`)*
+### Per-token perplexity by source length
+
+| source length | n | fixed vector | + attention | ratio |
+|---|---|---|---|---|
+| 1-10 | 405 | 20.428 | 13.270 | 0.650 |
+| 11-20 | 954 | 17.785 | 9.572 | 0.538 |
+| 21-30 | 832 | 21.662 | 9.949 | 0.459 |
+| 31-40 | 535 | 27.956 | 11.270 | 0.403 |
+| 41-50 | 194 | 32.970 | 11.604 | 0.352 |
+| 51-70 | 80 | 39.158 | 12.674 | 0.324 |
+
+A ratio that *falls* across the buckets means attention helps more on long
+sentences -- the bottleneck claim stated in the model's own likelihood.
+
+### Sentence-vector saturation
+
+The fixed vector is 2,048 real numbers and
+carries the whole source sentence however long it is.
+
+| source length | n | mean &#124;&#124;v&#124;&#124; |
+|---|---|---|
+| 1-10 | 405 | 26.3991 |
+| 11-20 | 954 | 34.0908 |
+| 21-30 | 832 | 47.6918 |
+| 31-40 | 535 | 63.2498 |
+| 41-50 | 194 | 81.0987 |
+| 51-70 | 80 | 102.6732 |
+
+![Sentence-vector norm](../results/wmt14_endterm/probe/sentence_vector_norm.png)
 
 ## 8. What the model reads (Bahdanau Fig. 3 analogue)
 
-*(not yet run: `make alignments`)*
+Alignments over the model's **own** output, not the reference. The source axis
+is in **encoder reading order** -- for a reversed model that is right-to-left, so
+a faithful word-by-word alignment appears as an anti-diagonal. We label it that
+way rather than un-reversing the axis to make a prettier picture.
+
+**Source**  <unk> <unk> <unk> jumped from a helicopter above Bogota , the capital of Colombia , on Thursday .
+
+**Ours**    <unk> <unk> <unk> a démissionné d ’ un agent de <unk> , capitale de Colombie , jeudi .
+
+![alignment](../results/wmt14_endterm/alignments/alignment_00.png)
+
+---
+
+**Source**  A black box in your car ?
+
+**Ours**    Une boîte noire dans votre voiture ?
+
+![alignment](../results/wmt14_endterm/alignments/alignment_01.png)
+
+---
+
+**Source**  The usually dull arena of highway planning has suddenly spawned intense debate and colorful alliances .
+
+**Ours**    La tendance généralement connue d ’ une feuille de route a soudainement provoqué une intense discussion et des alliances <unk> .
+
+![alignment](../results/wmt14_endterm/alignments/alignment_02.png)
+
+---
 
 ## 9. From attention to the Transformer
 
