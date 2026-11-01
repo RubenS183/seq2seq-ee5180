@@ -75,9 +75,12 @@ venv, corpora or checkpoints).
 
 - **The length-mismatch filter is gone.** `clean_pairs`'s ratio test was raised in
   review of the mid-term. The end-term corpus is prepared with `--max-ratio inf`
-  and the drop report at
-  `$EE5180_WORK/data/wmt14/prepared_nofilter/prepare_report.json` records
-  `"ratio": 0`. The 50-token cap is lifted to 100 as well, which matters more:
+  and the drop report, committed at
+  [`results/corpus/wmt14_prepared_nofilter.json`](results/corpus/wmt14_prepared_nofilter.json),
+  records `"ratio": 0` — against the mid-term's 1,823 in
+  [`results/corpus/wmt14_prepared_midterm.json`](results/corpus/wmt14_prepared_midterm.json).
+  Both are in the repository, so this is checkable from a clone with no corpus
+  download. The 50-token cap is lifted to 100 as well, which matters more:
   it had been removing 13.3% of the corpus, and long sentences are exactly where
   a fixed-length vector is supposed to fail.
 - **The training-set size is held fixed** at 500,000 pairs, so the corpus *size*
@@ -101,6 +104,22 @@ venv, corpora or checkpoints).
   the same instrument: 1.18× slower, +3.6% parameters.
 - **The scale gap is stated next to every number**, and we never present our BLEU
   as comparable to the paper's.
+
+### What a clone can run, and what it cannot
+
+Checkpoints (~220 MB each) and the corpora are deliberately not in the repository.
+So from a fresh clone, with no downloads:
+
+| Runs from a clone | Needs the trained artifacts in `$EE5180_WORK` |
+|---|---|
+| `make test` (52 gates, ~15 s) | `make baseline-regression` (needs the mid-term checkpoints) |
+| `make copy-task` (~40 s, synthetic data) | `make probe`, `make alignments` (need the end-term checkpoints) |
+| `make endterm-report`, `make endterm-slides` | `make results-endterm-*` (need the checkpoints to decode) |
+| every table and figure under `results/`, already committed | `make benchmark` (builds models, no corpus needed — but times this machine) |
+
+The reported numbers do not depend on rerunning the right-hand column: every one
+of them is committed under `results/`, and the report and deck are regenerated
+from those files alone.
 
 ## Work split — end-term additions
 

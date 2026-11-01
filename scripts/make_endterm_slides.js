@@ -33,8 +33,14 @@ const m30 = endterm("multi30k_endterm") || [];
 const copy = jload(path.join(REPO, "results/copy_task/copy_task.json"));
 const probe = jload(path.join(REPO, "results/wmt14_endterm/probe/probe.json"));
 const align = jload(path.join(REPO, "results/wmt14_endterm/alignments/alignments.json"));
-const prepOld = jload(path.join(WORK, "data/wmt14/prepared/prepare_report.json"));
-const prepNew = jload(path.join(WORK, "data/wmt14/prepared_nofilter/prepare_report.json"));
+// Slide 5 tells the marker to check the drop report rather than take the slide's
+// word for it, so the report has to be IN the repo -- one that only exists under
+// $WORK is not checkable from a clone. $WORK stays as the fallback, so a fresh
+// `make data-endterm` is still picked up before it has been copied across.
+const prepOld = jload(path.join(REPO, "results/corpus/wmt14_prepared_midterm.json"))
+             || jload(path.join(WORK, "data/wmt14/prepared/prepare_report.json"));
+const prepNew = jload(path.join(REPO, "results/corpus/wmt14_prepared_nofilter.json"))
+             || jload(path.join(WORK, "data/wmt14/prepared_nofilter/prepare_report.json"));
 
 const fig = f => path.join(REPO, "results", f);
 const has = f => fs.existsSync(fig(f));

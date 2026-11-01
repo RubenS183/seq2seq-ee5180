@@ -7,7 +7,7 @@
     "steps": 1500,
     "lr": 0.003,
     "seed": 0,
-    "log_every": 500
+    "log_every": 300
   },
   "chance_loss_per_seq": 28.602,
   "arms": {
@@ -19,12 +19,20 @@
           "loss_per_seq": 28.6415
         },
         {
-          "step": 500,
-          "loss_per_seq": 21.2211
+          "step": 300,
+          "loss_per_seq": 24.0384
         },
         {
-          "step": 1000,
-          "loss_per_seq": 9.924
+          "step": 600,
+          "loss_per_seq": 17.7674
+        },
+        {
+          "step": 900,
+          "loss_per_seq": 12.0446
+        },
+        {
+          "step": 1200,
+          "loss_per_seq": 7.4307
         },
         {
           "step": 1500,
@@ -40,12 +48,20 @@
           "loss_per_seq": 28.6394
         },
         {
-          "step": 500,
-          "loss_per_seq": 0.034
+          "step": 300,
+          "loss_per_seq": 0.1727
         },
         {
-          "step": 1000,
-          "loss_per_seq": 0.0081
+          "step": 600,
+          "loss_per_seq": 0.0221
+        },
+        {
+          "step": 900,
+          "loss_per_seq": 0.0099
+        },
+        {
+          "step": 1200,
+          "loss_per_seq": 0.0057
         },
         {
           "step": 1500,

@@ -1,0 +1,46 @@
+{
+  "args": {
+    "out": "/Users/rubenstalin/ee5180-work/data/wmt14/prepared_nofilter",
+    "src_lang": "en",
+    "tgt_lang": "fr",
+    "train_src": [
+      "/Users/rubenstalin/ee5180-work/data/wmt14/raw/nc9.en",
+      "/Users/rubenstalin/ee5180-work/data/wmt14/raw/europarl.sub.en"
+    ],
+    "train_tgt": [
+      "/Users/rubenstalin/ee5180-work/data/wmt14/raw/nc9.fr",
+      "/Users/rubenstalin/ee5180-work/data/wmt14/raw/europarl.sub.fr"
+    ],
+    "dev_src": "/Users/rubenstalin/ee5180-work/data/wmt14/raw/newstest2013.en",
+    "dev_tgt": "/Users/rubenstalin/ee5180-work/data/wmt14/raw/newstest2013.fr",
+    "test_src": "/Users/rubenstalin/ee5180-work/data/wmt14/raw/newstest2014.en",
+    "test_tgt": "/Users/rubenstalin/ee5180-work/data/wmt14/raw/newstest2014.fr",
+    "src_vocab_size": 32000,
+    "tgt_vocab_size": 32000,
+    "max_len": 100,
+    "max_ratio": "inf",
+    "max_train_pairs": 500000,
+    "workers": 8,
+    "seed": 1
+  },
+  "clean": {
+    "input": 1283251,
+    "empty": 3207,
+    "length": 6752,
+    "ratio": 0,
+    "dupe": 20300,
+    "kept": 1252992
+  },
+  "train_pairs": 500000,
+  "src_vocab": 32000,
+  "tgt_vocab": 32000,
+  "unk_rate": {
+    "train_src": 0.00639466232476531,
+    "train_tgt": 0.008415622857911703,
+    "test_src": 0.05785530551143472,
+    "test_tgt": 0.058157006675370104
+  },
+  "train_lines": 500000,
+  "dev_lines": 3000,
+  "test_lines": 3003
+}

@@ -85,8 +85,13 @@ def main():
       "   attention removes outright.", "")
 
     # --------------------------------------------------- 2. the data objection
-    mid = jload(work / "data/wmt14/prepared/prepare_report.json")
-    new = jload(work / "data/wmt14/prepared_nofilter/prepare_report.json")
+    # Committed under results/corpus/: this section tells the reader the drop
+    # report is the artefact to check, so it has to survive a clone. $WORK is the
+    # fallback, for a fresh `make data-endterm` not yet copied across.
+    mid = (jload(REPO / "results/corpus/wmt14_prepared_midterm.json")
+           or jload(work / "data/wmt14/prepared/prepare_report.json"))
+    new = (jload(REPO / "results/corpus/wmt14_prepared_nofilter.json")
+           or jload(work / "data/wmt14/prepared_nofilter/prepare_report.json"))
     w("## 2. The corpus: no length-mismatch filtering", "",
       "The mid-term's data pipeline dropped training pairs whose source and target",
       "lengths differed by more than a factor of 2.5, and dropped anything longer than",

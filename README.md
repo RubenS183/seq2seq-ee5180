@@ -244,7 +244,9 @@ codebase and rerunning the identical grid.
 length *ratio* (`max_ratio=2.5`) and dropped anything over 50 tokens. The
 end-term data drops the mismatch filter entirely (`--max-ratio inf`) and raises
 the cap to 100, so no pair is discarded for a length mismatch — the new
-`prepare_report.json` records `"ratio": 0`. Measured effect on WMT'14: the ratio
+`prepare_report.json` records `"ratio": 0`. Both drop reports are committed under
+[`results/corpus/`](results/corpus/), so that is checkable from a clone without
+downloading the corpus. Measured effect on WMT'14: the ratio
 filter had been removing 1,823 of 1,283,251 pairs (0.14%) and the 50-token cap
 170,275 (13.3%). The training set is still subsampled to exactly 500,000 pairs,
 so the corpus *size* is held fixed and only its length distribution moves (mean
