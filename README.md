@@ -157,6 +157,20 @@ Heavy artifacts (venv, corpora, checkpoints) live in `$EE5180_WORK`
 folder: a training run checkpointing into iCloud thrashes sync and risks
 eviction mid-run.
 
+They are also too large for the repository — a checkpoint is 220–229 MB and
+GitHub rejects anything over 100 MB — so the four that the gates need, plus the
+evaluation splits, are attached to the
+[`endterm-v1` release](https://github.com/RubenS183/seq2seq-ee5180/releases/tag/endterm-v1):
+
+```bash
+./scripts/fetch_artifacts.sh    # 892 MB into $EE5180_WORK, SHA-256 checked
+```
+
+Nothing *reported* needs this: every number in the report and the deck is
+committed under `results/`. It is what makes `make baseline-regression`,
+`make probe` and `make alignments` runnable from a clone, so the numbers can be
+re-derived from the weights instead of read.
+
 ## Work split
 
 | Member | Owns | Files |
@@ -310,6 +324,7 @@ gap cannot be waved away as extra capacity.
 
 ```bash
 make test                      # 52 gates, ~14 s
+./scripts/fetch_artifacts.sh   # the trained weights, if you did not train them
 make baseline-regression       # the refactor did not move the mid-term
 make copy-task                 # the bottleneck in miniature, ~1 min
 make data-endterm              # prepare both corpora with no mismatch filter

@@ -53,7 +53,7 @@ nothing is hand-edited.
 | File | What it is |
 |---|---|
 | `report/EE5180_endterm_report.pdf` | The end-term report: the bottleneck, the corpus change, Bahdanau attention and its declared deviations, the controlled comparison, the direct probes, and the Attention → Transformer line. |
-| `slides/EE5180_endterm_slides.pptx` | The end-term presentation (17 slides, speaker notes included). |
+| `slides/EE5180_endterm_slides.pptx` | The end-term presentation (18 slides, speaker notes included). |
 | `results/wmt14_endterm/` | The headline comparison: `endterm_results.md`, both arms' tables, the BLEU-by-length overlay, alignment heatmaps, the perplexity and saturation probes. |
 | `results/multi30k_endterm/` | The seed-controlled 2×2 grid (`{forward,reversed} × {fixed vector, attention}`, 3 seeds). |
 | `results/copy_task/` | The bottleneck in miniature — a task the fixed vector cannot solve and attention can. |
@@ -107,19 +107,34 @@ venv, corpora or checkpoints).
 
 ### What a clone can run, and what it cannot
 
-Checkpoints (~220 MB each) and the corpora are deliberately not in the repository.
-So from a fresh clone, with no downloads:
+Checkpoints are 220–229 MB each and GitHub rejects any file over 100 MB, so they
+cannot live in the repository. They are attached to the
+[`endterm-v1` release](https://github.com/RubenS183/seq2seq-ee5180/releases/tag/endterm-v1)
+instead, together with the evaluation splits. One command places them:
 
-| Runs from a clone | Needs the trained artifacts in `$EE5180_WORK` |
+```
+./scripts/fetch_artifacts.sh        # 892 MB; or `midterm` / `endterm` for half
+```
+
+It downloads the assets into `$EE5180_WORK`, verifies the SHA-256 of each and
+extracts them to the paths the `Makefile` already expects.
+
+| Runs from a bare clone | Also needs `./scripts/fetch_artifacts.sh` |
 |---|---|
-| `make test` (52 gates, ~15 s) | `make baseline-regression` (needs the mid-term checkpoints) |
-| `make copy-task` (~40 s, synthetic data) | `make probe`, `make alignments` (need the end-term checkpoints) |
-| `make endterm-report`, `make endterm-slides` | `make results-endterm-*` (need the checkpoints to decode) |
-| every table and figure under `results/`, already committed | `make benchmark` (builds models, no corpus needed — but times this machine) |
+| `make test` (52 gates, ~15 s) | `make baseline-regression` (mid-term checkpoints) |
+| `make copy-task` (~40 s, synthetic data) | `make probe`, `make alignments` (end-term checkpoints) |
+| `make endterm-report`, `make endterm-slides` | `make results-endterm-*` (checkpoints, to re-decode) |
+| `make benchmark` (builds the models, no corpus — times this machine) | retraining (`make endterm-wmt`), which additionally needs `make data-endterm` to re-download the corpus |
+| every table and figure under `results/`, already committed | |
 
-The reported numbers do not depend on rerunning the right-hand column: every one
-of them is committed under `results/`, and the report and deck are regenerated
-from those files alone.
+The reported numbers do not depend on rerunning either column: every one of them
+is committed under `results/`, and the report and deck are regenerated from those
+files alone. The release only lets a marker re-derive them from the weights
+rather than read them — which was checked before upload: `baseline_regression.sh`
+run against nothing but the release assets, in an empty work directory, returns
+PASS with hypotheses byte-identical to the submitted mid-term in both
+directions, and `make probe` reproduces every committed per-bucket perplexity
+exactly (`probe.json` differs only in the recorded checkpoint path).
 
 ## Work split — end-term additions
 

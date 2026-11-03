@@ -6,7 +6,7 @@ export EE5180_WORK = $(WORK)
 .PHONY: help setup test data-multi30k data-wmt smoke wmt results-multi30k results-wmt beam-ablation figures report slides submit clean-runs \
         baseline-regression copy-task data-endterm endterm-multi30k endterm-wmt \
         results-endterm-multi30k results-endterm-wmt alignments probe endterm-figures \
-        endterm-report endterm-slides submit-endterm
+        endterm-report endterm-slides submit-endterm fetch-artifacts
 
 help:
 	@grep -E '^[a-z0-9-]+:.*?##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/' | column -t -s "$$(printf '\t')"
@@ -17,6 +17,9 @@ setup:              ## create the venv outside iCloud and install pinned deps
 
 test:               ## correctness gates (incl. MPS-vs-CPU agreement, both arms)
 	$(PY) -m pytest tests -q
+
+fetch-artifacts:    ## trained weights + eval splits from the GitHub release
+	./scripts/fetch_artifacts.sh
 
 baseline-regression: ## did attention change the paper's model? byte-exact answer
 	./scripts/baseline_regression.sh
