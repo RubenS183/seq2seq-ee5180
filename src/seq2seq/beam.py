@@ -1,28 +1,21 @@
 """Left-to-right beam search, configurable B, with ensemble support.
 
-Owner: M3 (decoding & eval).
+Faithful to paper sec. 3.2: each partial hypothesis is extended with every word,
+all but the B most likely by LOG PROBABILITY are discarded, and a hypothesis
+leaves the beam as soon as it emits <EOS>. So the beam genuinely shrinks as
+hypotheses complete, and ranking uses raw log-probability with no length
+normalisation. `lengthNorm` exists as a flag but every number we report uses the
+paper's setting of 0.0. At B=1 this reduces exactly to greedy decoding, which
+tests/test_smoke.py asserts.
 
-Faithful to paper sec. 3.2: "At each timestep we extend each partial hypothesis
-in the beam with every possible word in the vocabulary ... discard all but the B
-most likely hypotheses according to the model's LOG PROBABILITY. As soon as the
-<EOS> symbol is appended to a hypothesis, it is removed from the beam and is
-added to the set of complete hypotheses."
+Ensembling averages per-step log-probabilities across models, a geometric mean
+of the member distributions. Members differ only in random init and minibatch
+order, as in the paper.
 
-So the beam genuinely SHRINKS as hypotheses complete, and ranking uses raw
-log-probability with no length normalisation. `length_norm` is available as a
-flag but every number we report uses the paper's setting (0.0). With B=1 this
-reduces exactly to greedy decoding, which `tests/test_smoke.py` asserts.
-
-Ensembling averages per-step log-probabilities across models (a geometric mean
-of the member distributions); the members differ only in random init and
-minibatch order, as in the paper.
-
-Both arms of the end-term share this one implementation. Everything the decoder
-carries between steps lives in `model.DecodeState` -- for the paper's model just
-the LSTM's (h, c), for the attention model also the encoder memory bank -- so the
-beam bookkeeping below never has to know which architecture it is driving. A
-second copy of this function would be a second place for beam(B=1) to stop being
-greedy decoding.
+Both end-term arms share this one implementation: everything carried between
+steps lives in `model.DecodeState`, so the bookkeeping below never has to know
+which architecture it is driving. A second copy would be a second place for
+beam(B=1) to stop being greedy decoding.
 """
 from __future__ import annotations
 
@@ -34,131 +27,136 @@ def _as_list(models):
     return models if isinstance(models, (list, tuple)) else [models]
 
 
+def _encoder_input(srcIds, srcVocab, reverseSource, device):
+    tokens = list(srcIds)
+    if reverseSource:
+        tokens.reverse()
+    tokens = tokens + [srcVocab.eos_id]
+    src = torch.tensor([tokens], dtype=torch.long, device=device)
+    srcLen = torch.tensor([len(tokens)], dtype=torch.long, device=device)
+    return src, srcLen
+
+
+def _mean_step_logprobs(models, states, tokens):
+    """Average next-token log-probabilities over the ensemble members."""
+    total, nextStates = None, []
+    for model, state in zip(models, states):
+        logits, advanced = model.decode_step(tokens, state)
+        logprobs = F.log_softmax(logits[:, -1, :].float(), dim=-1)
+        total = logprobs if total is None else total + logprobs
+        nextStates.append(advanced)
+    return total / len(models), nextStates
+
+
 @torch.no_grad()
 def beam_search(
     models,
-    src_ids: list[int],
-    src_vocab,
-    tgt_vocab,
-    beam_size: int = 12,
-    reverse_source: bool = False,
-    max_decode_len: int = 100,
-    length_norm: float = 0.0,
+    srcIds: list[int],
+    srcVocab,
+    tgtVocab,
+    beamSize: int = 12,
+    reverseSource: bool = False,
+    maxDecodeLen: int = 100,
+    lengthNorm: float = 0.0,
     device=None,
 ):
-    """Translate one sentence. Returns (token_ids, logprob)."""
+    """Translate one sentence. Returns (tokenIds, logprob)."""
     models = _as_list(models)
     device = device or next(models[0].parameters()).device
-    for m in models:
-        m.eval()
+    for model in models:
+        model.eval()
 
-    s = list(src_ids)
-    if reverse_source:
-        s.reverse()
-    s = s + [src_vocab.eos_id]
+    src, srcLen = _encoder_input(srcIds, srcVocab, reverseSource, device)
 
-    src = torch.tensor([s], dtype=torch.long, device=device)
-    src_len = torch.tensor([len(s)], dtype=torch.long, device=device)
-
-    # One decode state per model. It starts one hypothesis wide; `reorder`
+    # One decode state per model. It starts one hypothesis wide, and `reorder`
     # below grows it to the beam width on the first step.
-    states = [m.encode_for_decode(src, src_len) for m in models]
+    states = [model.encode_for_decode(src, srcLen) for model in models]
 
-    beam_tokens = torch.full((1, 1), tgt_vocab.sos_id, dtype=torch.long, device=device)
-    beam_scores = torch.zeros(1, device=device)
+    beamTokens = torch.full((1, 1), tgtVocab.sos_id, dtype=torch.long, device=device)
+    beamScores = torch.zeros(1, device=device)
     completed: list[tuple[float, list[int]]] = []
-    max_steps = min(max_decode_len, 2 * len(src_ids) + 5)
+    maxSteps = min(maxDecodeLen, 2 * len(srcIds) + 5)
 
-    for _ in range(max_steps):
-        if beam_tokens.size(0) == 0:
+    for _ in range(maxSteps):
+        if beamTokens.size(0) == 0:
             break
 
-        # Average log-probs over the ensemble members.
-        step_logprobs, new_states = None, []
-        for m, state in zip(models, states):
-            logits, st = m.decode_step(beam_tokens[:, -1:], state)
-            lp = F.log_softmax(logits[:, -1, :].float(), dim=-1)
-            step_logprobs = lp if step_logprobs is None else step_logprobs + lp
-            new_states.append(st)
-        step_logprobs = step_logprobs / len(models)
-
-        cand = beam_scores.unsqueeze(1) + step_logprobs  # (beam, vocab)
-        flat = cand.reshape(-1)
-        k = min(beam_size, flat.numel())
-        top_scores, top_idx = flat.topk(k)
-        beam_idx = torch.div(top_idx, cand.size(1), rounding_mode="floor")
-        token_idx = top_idx % cand.size(1)
-
-        next_tokens = torch.cat(
-            [beam_tokens[beam_idx], token_idx.unsqueeze(1)], dim=1
+        stepLogprobs, nextStates = _mean_step_logprobs(
+            models, states, beamTokens[:, -1:]
         )
 
-        # Paper: a hypothesis that emits <eos> leaves the beam.
-        is_eos = token_idx == tgt_vocab.eos_id
-        for j in torch.nonzero(is_eos, as_tuple=False).flatten().tolist():
-            seq = next_tokens[j, 1:-1].tolist()  # drop <sos> and <eos>
-            score = top_scores[j].item()
-            if length_norm:
-                score = score / (max(len(seq), 1) ** length_norm)
-            completed.append((score, seq))
+        candidates = beamScores.unsqueeze(1) + stepLogprobs  # (beam, vocab)
+        flat = candidates.reshape(-1)
+        topK = min(beamSize, flat.numel())
+        topScores, topFlatIdx = flat.topk(topK)
+        beamIdx = torch.div(topFlatIdx, candidates.size(1), rounding_mode="floor")
+        tokenIdx = topFlatIdx % candidates.size(1)
 
-        keep = ~is_eos
-        if keep.sum() == 0:
+        nextTokens = torch.cat([beamTokens[beamIdx], tokenIdx.unsqueeze(1)], dim=1)
+
+        # Paper: a hypothesis that emits <eos> leaves the beam.
+        isEos = tokenIdx == tgtVocab.eos_id
+        for row in torch.nonzero(isEos, as_tuple=False).flatten().tolist():
+            sequence = nextTokens[row, 1:-1].tolist()  # drop <sos> and <eos>
+            score = topScores[row].item()
+            if lengthNorm:
+                score = score / (max(len(sequence), 1) ** lengthNorm)
+            completed.append((score, sequence))
+
+        survived = ~isEos
+        if survived.sum() == 0:
             break
-        beam_tokens = next_tokens[keep]
-        beam_scores = top_scores[keep]
-        survivors = beam_idx[keep]
+        beamTokens = nextTokens[survived]
+        beamScores = topScores[survived]
         # Reindexes the recurrent state and, for the attention arm, the memory
         # bank and mask alongside it.
-        states = [st.reorder(survivors) for st in new_states]
+        states = [state.reorder(beamIdx[survived]) for state in nextStates]
 
         # Admissible early stop: log-probabilities are negative, so extending a
         # partial hypothesis can only lower its score. Once the best partial is
         # already below the best completed hypothesis, nothing can overtake it.
-        # This only holds when scores are comparable -- with length
-        # normalisation the completed scores are divided by length and the
-        # partials are not, so the comparison would be invalid.
-        if not length_norm and len(completed) >= beam_size:
-            if beam_scores.max().item() < max(s for s, _ in completed):
+        # Invalid under length normalisation, where completed scores are divided
+        # by length and partials are not, so the comparison is gated on it.
+        if not lengthNorm and len(completed) >= beamSize:
+            if beamScores.max().item() < max(score for score, _ in completed):
                 break
 
-    if not completed:  # ran out of steps: fall back to the best partial
-        seq = beam_tokens[0, 1:].tolist()
-        return seq, beam_scores[0].item()
+    if not completed:  # ran out of steps, so fall back to the best partial
+        return beamTokens[0, 1:].tolist(), beamScores[0].item()
 
-    completed.sort(key=lambda x: x[0], reverse=True)
-    best_score, best_seq = completed[0]
-    return best_seq, best_score
+    completed.sort(key=lambda scored: scored[0], reverse=True)
+    bestScore, bestSequence = completed[0]
+    return bestSequence, bestScore
 
 
 @torch.no_grad()
-def greedy_decode(models, src_ids, src_vocab, tgt_vocab, reverse_source=False,
-                  max_decode_len=100, device=None):
-    """Reference implementation used to assert that beam_search(B=1) == greedy."""
+def greedy_decode(models, srcIds, srcVocab, tgtVocab, reverseSource=False,
+                  maxDecodeLen=100, device=None):
+    """Reference implementation used to assert that beam_search(B=1) == greedy.
+
+    Deliberately does its own step arithmetic rather than calling the helper
+    `beam_search` uses. A shared helper would make the two agree even when both
+    are wrong, which is exactly what this gate is supposed to catch.
+    """
     models = _as_list(models)
     device = device or next(models[0].parameters()).device
-    s = list(src_ids)
-    if reverse_source:
-        s.reverse()
-    s = s + [src_vocab.eos_id]
-    src = torch.tensor([s], dtype=torch.long, device=device)
-    src_len = torch.tensor([len(s)], dtype=torch.long, device=device)
-    states = [m.encode_for_decode(src, src_len) for m in models]
-    token = torch.tensor([[tgt_vocab.sos_id]], dtype=torch.long, device=device)
-    out, score = [], 0.0
-    for _ in range(min(max_decode_len, 2 * len(src_ids) + 5)):
-        lp_sum, new_states = None, []
-        for m, state in zip(models, states):
-            logits, st = m.decode_step(token, state)
-            lp = torch.log_softmax(logits[:, -1, :].float(), dim=-1)
-            lp_sum = lp if lp_sum is None else lp_sum + lp
-            new_states.append(st)
-        lp_sum = lp_sum / len(models)
-        states = new_states
-        best = int(lp_sum.argmax(-1))
-        score += float(lp_sum[0, best])
-        if best == tgt_vocab.eos_id:
+    src, srcLen = _encoder_input(srcIds, srcVocab, reverseSource, device)
+    states = [model.encode_for_decode(src, srcLen) for model in models]
+    token = torch.tensor([[tgtVocab.sos_id]], dtype=torch.long, device=device)
+    emitted, score = [], 0.0
+    for _ in range(min(maxDecodeLen, 2 * len(srcIds) + 5)):
+        stepLogprobs, nextStates = None, []
+        for model, state in zip(models, states):
+            logits, advanced = model.decode_step(token, state)
+            logprobs = torch.log_softmax(logits[:, -1, :].float(), dim=-1)
+            stepLogprobs = logprobs if stepLogprobs is None else stepLogprobs + logprobs
+            nextStates.append(advanced)
+        stepLogprobs = stepLogprobs / len(models)
+        states = nextStates
+        best = int(stepLogprobs.argmax(-1))
+        score += float(stepLogprobs[0, best])
+        if best == tgtVocab.eos_id:
             break
-        out.append(best)
+        emitted.append(best)
         token = torch.tensor([[best]], dtype=torch.long, device=device)
-    return out, score
+    return emitted, score

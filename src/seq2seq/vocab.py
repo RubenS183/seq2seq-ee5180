@@ -1,9 +1,7 @@
 """Word-level vocabulary with the paper's UNK handling.
 
-Paper uses 160k source / 80k target most-frequent words, every OOV -> "UNK"
-(sec. 3.1). We keep the mechanism and shrink the size (declared deviation).
-
-Owner: M1 (data).
+The paper keeps the 160k most frequent source and 80k target words and maps
+every OOV to "UNK" (sec. 3.1). We keep the mechanism and shrink the size.
 """
 from __future__ import annotations
 
@@ -18,7 +16,7 @@ SPECIALS = [PAD, UNK, SOS, EOS]
 class Vocab:
     def __init__(self, itos: list[str]):
         self.itos = list(itos)
-        self.stoi = {tok: i for i, tok in enumerate(self.itos)}
+        self.stoi = {token: index for index, token in enumerate(self.itos)}
         self.pad_id = self.stoi[PAD]
         self.unk_id = self.stoi[UNK]
         self.sos_id = self.stoi[SOS]
@@ -28,30 +26,29 @@ class Vocab:
         return len(self.itos)
 
     @classmethod
-    def build(cls, token_streams, max_size: int, min_freq: int = 1) -> "Vocab":
-        counter: Counter = Counter()
-        for tokens in token_streams:
-            counter.update(tokens)
-        keep = [
-            tok
-            for tok, freq in counter.most_common()
-            if freq >= min_freq and tok not in SPECIALS
-        ][: max_size - len(SPECIALS)]
-        return cls(SPECIALS + keep)
+    def build(cls, tokenStreams, maxSize: int, minFreq: int = 1) -> "Vocab":
+        counts: Counter = Counter()
+        for tokens in tokenStreams:
+            counts.update(tokens)
+        kept = [
+            token
+            for token, freq in counts.most_common()
+            if freq >= minFreq and token not in SPECIALS
+        ][: maxSize - len(SPECIALS)]
+        return cls(SPECIALS + kept)
 
     def encode(self, tokens) -> list[int]:
-        unk = self.unk_id
-        stoi = self.stoi
-        return [stoi.get(tok, unk) for tok in tokens]
+        unkId, stoi = self.unk_id, self.stoi
+        return [stoi.get(token, unkId) for token in tokens]
 
-    def decode(self, ids, strip_specials: bool = True) -> list[str]:
-        out = []
-        for i in ids:
-            tok = self.itos[i]
-            if strip_specials and tok in (PAD, SOS, EOS):
+    def decode(self, ids, stripSpecials: bool = True) -> list[str]:
+        decoded = []
+        for tokenId in ids:
+            token = self.itos[tokenId]
+            if stripSpecials and token in (PAD, SOS, EOS):
                 continue
-            out.append(tok)
-        return out
+            decoded.append(token)
+        return decoded
 
     def save(self, path: Path) -> None:
         path = Path(path)
@@ -62,10 +59,10 @@ class Vocab:
     def load(cls, path: Path) -> "Vocab":
         return cls(json.loads(Path(path).read_text()))
 
-    def unk_rate(self, token_streams) -> float:
-        total = oov = 0
-        for tokens in token_streams:
-            for tok in tokens:
-                total += 1
-                oov += tok not in self.stoi
-        return oov / max(total, 1)
+    def unk_rate(self, tokenStreams) -> float:
+        totalTokens = oovTokens = 0
+        for tokens in tokenStreams:
+            for token in tokens:
+                totalTokens += 1
+                oovTokens += token not in self.stoi
+        return oovTokens / max(totalTokens, 1)

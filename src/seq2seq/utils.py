@@ -1,7 +1,4 @@
-"""Device selection, seeding, work-dir resolution, checkpoint I/O.
-
-Owner: M2 (model & training).
-"""
+"""Device selection, seeding, work-dir resolution, checkpoint I/O."""
 from __future__ import annotations
 
 import json
@@ -16,8 +13,8 @@ import torch
 def work_dir() -> Path:
     """Root for heavy artifacts (data, checkpoints).
 
-    Deliberately outside the iCloud-synced course folder: a training run that
-    checkpoints into iCloud thrashes sync and risks eviction mid-run.
+    Deliberately outside the iCloud-synced course folder, because a training run
+    that checkpoints into iCloud thrashes sync and risks eviction mid-run.
     """
     return Path(os.environ.get("EE5180_WORK", Path.home() / "ee5180-work")).expanduser()
 
@@ -46,35 +43,36 @@ def set_seed(seed: int) -> None:
 
 def save_checkpoint(path: Path, model, optimizer, meta: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmpPath = path.with_suffix(path.suffix + ".tmp")
     torch.save(
         {
             "model": model.state_dict(),
             "optimizer": optimizer.state_dict() if optimizer is not None else None,
             "meta": meta,
         },
-        tmp,
+        tmpPath,
     )
-    tmp.replace(path)  # atomic: an interrupted save never leaves a corrupt checkpoint
+    # Atomic, so an interrupted save never leaves a corrupt checkpoint behind.
+    tmpPath.replace(path)
 
 
-def load_checkpoint(path: Path, map_location="cpu") -> dict:
-    return torch.load(path, map_location=map_location, weights_only=False)
+def load_checkpoint(path: Path, mapLocation="cpu") -> dict:
+    return torch.load(path, map_location=mapLocation, weights_only=False)
 
 
 class JsonlLogger:
-    """Append-only training log; survives interruption, easy to re-plot."""
+    """Append-only training log. Survives interruption, easy to re-plot."""
 
     def __init__(self, path: Path):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
     def log(self, **record) -> None:
-        with self.path.open("a") as fh:
-            fh.write(json.dumps(record) + "\n")
+        with self.path.open("a") as handle:
+            handle.write(json.dumps(record) + "\n")
 
     def read(self) -> list[dict]:
         if not self.path.exists():
             return []
-        with self.path.open() as fh:
-            return [json.loads(line) for line in fh if line.strip()]
+        with self.path.open() as handle:
+            return [json.loads(line) for line in handle if line.strip()]

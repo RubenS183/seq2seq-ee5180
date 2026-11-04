@@ -1,26 +1,16 @@
 """Memory-frugal cross-entropy for a large output vocabulary.
 
-Owner: M2 (model & training).
+The paper uses "a naive softmax over 80,000 words at each output" (sec. 3.4) and
+parallelises it across four GPUs. At our scale that same softmax is still the
+memory bottleneck: at batch 128, a 50-token target and a 32k vocabulary the
+logits tensor alone is 128 x 51 x 32000 x 4 bytes = 836 MB, and autograd keeps
+it alive for the backward pass.
 
-The paper uses "a naive softmax over 80,000 words at each output" (sec. 3.4)
-and parallelised it across four GPUs. At our scale the same naive softmax is
-still the memory bottleneck: with batch 128, a 50-token target and a 32k
-vocabulary the logits tensor alone is
-
-    128 x 51 x 32000 x 4 bytes = 836 MB
-
-and autograd retains it for the backward pass, alongside its gradient and the
-softmax intermediates. That is what exhausted a 16 GB shared machine.
-
-`chunked_ce_loss` splits the TIME axis into chunks and wraps each chunk's
-projection + cross-entropy in `torch.utils.checkpoint`, so only one chunk's
-logits exist at a time; the rest are recomputed during backward. Peak memory
-for this term drops by roughly the number of chunks, at the cost of one extra
-forward over the projection.
-
-The maths is unchanged: the returned value and the gradients match the
-unchunked computation to floating-point tolerance, which tests/test_smoke.py
-asserts.
+`chunked_ce_loss` splits the time axis and wraps each chunk's projection and
+cross-entropy in `torch.utils.checkpoint`, so only one chunk's logits exist at
+once and the rest are recomputed during backward. The maths is unchanged and
+tests/test_smoke.py asserts the value and every gradient match the unchunked
+computation.
 """
 from __future__ import annotations
 
@@ -29,45 +19,47 @@ import torch.nn.functional as F
 from torch.utils.checkpoint import checkpoint
 
 
-def _chunk_nll(hidden_chunk, target_chunk, weight, bias, pad_id):
-    """Projection + summed NLL for one slice of timesteps."""
-    logits = F.linear(hidden_chunk, weight, bias)
+def _chunk_nll(hiddenChunk, targetChunk, weight, bias, padId):
+    logits = F.linear(hiddenChunk, weight, bias)
     return F.cross_entropy(
         logits.reshape(-1, logits.size(-1)),
-        target_chunk.reshape(-1),
-        ignore_index=pad_id,
+        targetChunk.reshape(-1),
+        ignore_index=padId,
         reduction="sum",
     )
 
 
-def chunked_ce_loss(hidden, out_proj, targets, pad_id: int, chunk_size: int = 0):
+def chunked_ce_loss(hidden, outProj, targets, padId: int, chunkSize: int = 0):
     """Summed token NLL, computed in checkpointed chunks over time.
 
-    hidden   : (batch, time, hidden_dim) decoder outputs, before projection
-    out_proj : the nn.Linear mapping hidden -> vocabulary
-    targets  : (batch, time) gold ids, padded with `pad_id`
-    chunk_size: timesteps per chunk; 0 or >= time computes it in one go.
+    hidden    : (batch, time, hiddenDim) decoder outputs, before projection
+    outProj   : the nn.Linear mapping hidden -> vocabulary
+    targets   : (batch, time) gold ids, padded with `padId`
+    chunkSize : timesteps per chunk. 0 or >= time computes it in one go.
     """
-    time_steps = hidden.size(1)
-    if chunk_size <= 0 or chunk_size >= time_steps:
-        logits = out_proj(hidden)
+    timeSteps = hidden.size(1)
+    if chunkSize <= 0 or chunkSize >= timeSteps:
+        logits = outProj(hidden)
         return F.cross_entropy(
             logits.reshape(-1, logits.size(-1)),
             targets.reshape(-1),
-            ignore_index=pad_id,
+            ignore_index=padId,
             reduction="sum",
         )
 
     total = hidden.new_zeros(())
-    use_ckpt = torch.is_grad_enabled() and hidden.requires_grad
-    for start in range(0, time_steps, chunk_size):
-        stop = min(start + chunk_size, time_steps)
-        h, t = hidden[:, start:stop], targets[:, start:stop]
-        if use_ckpt:
+    useCheckpoint = torch.is_grad_enabled() and hidden.requires_grad
+    for start in range(0, timeSteps, chunkSize):
+        stop = min(start + chunkSize, timeSteps)
+        hiddenChunk, targetChunk = hidden[:, start:stop], targets[:, start:stop]
+        if useCheckpoint:
             total = total + checkpoint(
-                _chunk_nll, h, t, out_proj.weight, out_proj.bias, pad_id,
+                _chunk_nll, hiddenChunk, targetChunk,
+                outProj.weight, outProj.bias, padId,
                 use_reentrant=False,
             )
         else:
-            total = total + _chunk_nll(h, t, out_proj.weight, out_proj.bias, pad_id)
+            total = total + _chunk_nll(
+                hiddenChunk, targetChunk, outProj.weight, outProj.bias, padId
+            )
     return total

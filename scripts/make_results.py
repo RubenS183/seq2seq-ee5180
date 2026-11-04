@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-"""Decode the whole grid, score it, and emit the reproduction table + figures.
-
-Owner: M3 (eval) / M4 (analysis).
+"""Decode the whole grid, score it, and emit the reproduction table and figures.
 
 Produces, under results/<name>/:
   table1_reproduction.csv   one row per (direction, beam, model set)
   results.md                the same table rendered, next to the paper's numbers
   bleu_by_length.png        Fig. 3 analogue
   beam_sweep.png            the Table 1 beam trend
-  training_curves.png       dev perplexity, forward vs reversed
+  training_curves.png       dev perplexity, forward against reversed
   sample_translations.md    Table 3 analogue
 """
 from __future__ import annotations
@@ -24,7 +22,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from seq2seq.data import read_lines  # noqa: E402
 from seq2seq.evaluate import BUCKET_SETS, run_eval  # noqa: E402
 from seq2seq.plots import plot_beam_sweep, plot_bleu_by_length, plot_training_curves  # noqa: E402
-from seq2seq.utils import work_dir  # noqa: E402
 
 PAPER = {
     ("fwd", 12, 1): 26.17,
@@ -37,163 +34,193 @@ PAPER = {
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--name", required=True)
-    ap.add_argument("--data-dir", required=True)
-    ap.add_argument("--runs-root", required=True)
-    ap.add_argument("--out", required=True)
-    ap.add_argument("--beams", type=int, nargs="+", default=[1, 2, 12])
-    ap.add_argument("--seeds", type=int, nargs="+", default=[1])
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--name", required=True)
+    parser.add_argument("--data-dir", required=True)
+    parser.add_argument("--runs-root", required=True)
+    parser.add_argument("--out", required=True)
+    parser.add_argument("--beams", type=int, nargs="+", default=[1, 2, 12])
+    parser.add_argument("--seeds", type=int, nargs="+", default=[1])
     # Which end-term arm's run directories to read. "" is the mid-term layout,
-    # {direction}_seed{N}; "attn" reads {direction}_attn_seed{N}.
-    ap.add_argument("--arm", default="", choices=["", "attn"])
-    ap.add_argument("--buckets", default="midterm", choices=sorted(BUCKET_SETS))
-    ap.add_argument("--max-decode-len", dest="max_decode_len", type=int, default=100)
-    ap.add_argument("--directions", nargs="+", default=["fwd", "rev"],
-                    choices=["fwd", "rev"])
-    ap.add_argument("--ensemble", action="store_true", help="also decode a seed-ensemble")
-    ap.add_argument("--per-seed", dest="per_seed", action="store_true",
-                    help="also decode each seed on its own at the largest beam, so "
-                         "the end-term can report a mean and a spread rather than "
-                         "one run's number")
-    ap.add_argument("--limit", type=int, default=0)
-    ap.add_argument("--device", default="cpu")  # see evaluate.py: 9x faster than MPS for beam search
-    ap.add_argument("--scale-note", default="")
-    ap.add_argument("--rebuild-md", action="store_true",
-                    help="rewrite results.md and the figures from all_results.json, "
-                         "without decoding again (decoding the full test set takes ~30 min)")
-    args = ap.parse_args()
+    # {direction}_seed{N}, and "attn" reads {direction}_attn_seed{N}.
+    parser.add_argument("--arm", default="", choices=["", "attn"])
+    parser.add_argument("--buckets", default="midterm", choices=sorted(BUCKET_SETS))
+    parser.add_argument("--max-decode-len", dest="max_decode_len", type=int, default=100)
+    parser.add_argument("--directions", nargs="+", default=["fwd", "rev"],
+                        choices=["fwd", "rev"])
+    parser.add_argument("--ensemble", action="store_true",
+                        help="also decode a seed-ensemble")
+    parser.add_argument("--per-seed", dest="per_seed", action="store_true",
+                        help="also decode each seed on its own at the largest beam, so "
+                             "the end-term can report a mean and a spread rather than "
+                             "one run's number")
+    parser.add_argument("--limit", type=int, default=0)
+    # See evaluate.py: CPU is 9x faster than MPS for beam search.
+    parser.add_argument("--device", default="cpu")
+    parser.add_argument("--scale-note", default="")
+    parser.add_argument("--rebuild-md", action="store_true",
+                        help="rewrite results.md and the figures from all_results.json, "
+                             "without decoding again (decoding the full test set "
+                             "takes ~30 min)")
+    args = parser.parse_args()
 
-    data_dir = Path(args.data_dir).expanduser()
-    runs_root = Path(args.runs_root).expanduser()
-    out = Path(args.out).expanduser()
-    out.mkdir(parents=True, exist_ok=True)
-    hyp_dir = out / "hypotheses"
+    dataDir = Path(args.data_dir).expanduser()
+    runsRoot = Path(args.runs_root).expanduser()
+    outDir = Path(args.out).expanduser()
+    outDir.mkdir(parents=True, exist_ok=True)
+    hypDir = outDir / "hypotheses"
 
     results = []
-    cached = out / "all_results.json"
+    cachedPath = outDir / "all_results.json"
     if args.rebuild_md:
-        if not cached.exists():
-            sys.exit(f"--rebuild-md needs {cached}; run without it first.")
-        results = json.loads(cached.read_text())
+        if not cachedPath.exists():
+            sys.exit(f"--rebuild-md needs {cachedPath}; run without it first.")
+        results = json.loads(cachedPath.read_text())
         print(f"[rebuild-md] {len(results)} cached rows, no decoding")
+
     arm = f"_{args.arm}" if args.arm else ""
+    armLabel = args.arm or "base"
+    buckets = BUCKET_SETS[args.buckets]
     wanted = [(d, d == "rev") for d in ("fwd", "rev") if d in args.directions]
+
     for direction, reverse in ([] if args.rebuild_md else wanted):
-        ckpts = [runs_root / f"{direction}{arm}_seed{s}" / "best.pt" for s in args.seeds]
-        present = [c for c in ckpts if c.exists()]
+        checkpoints = [runsRoot / f"{direction}{arm}_seed{s}" / "best.pt"
+                       for s in args.seeds]
+        present = [c for c in checkpoints if c.exists()]
         if not present:
-            print(f"[warn] no checkpoints for {direction}: {ckpts}", file=sys.stderr)
+            print(f"[warn] no checkpoints for {direction}: {checkpoints}", file=sys.stderr)
             continue
+
         for beam in args.beams:
-            # single model = the primary seed
-            res = run_eval([present[0]], data_dir, beam, reverse, args.device,
-                           args.limit, 0.0, "fr", "en", hyp_dir,
-                           f"{direction}{arm}_seed{args.seeds[0]}",
-                           BUCKET_SETS[args.buckets], args.max_decode_len)
-            res["direction"], res["seeds"] = direction, [args.seeds[0]]
-            res["arm"] = args.arm or "base"
-            results.append(res)
-            print(f"  {direction} beam={beam:>2} single -> BLEU_tok {res['bleu_tok']:.2f} "
-                  f"| BLEU_detok {res['bleu_detok']:.2f} | ppl {res['test_ppl']}", flush=True)
+            # Single model, meaning the primary seed.
+            result = run_eval([present[0]], dataDir, beam, reverse, args.device,
+                              args.limit, 0.0, "fr", "en", hypDir,
+                              f"{direction}{arm}_seed{args.seeds[0]}",
+                              buckets, args.max_decode_len)
+            result["direction"], result["seeds"] = direction, [args.seeds[0]]
+            result["arm"] = armLabel
+            results.append(result)
+            print(f"  {direction} beam={beam:>2} single -> "
+                  f"BLEU_tok {result['bleu_tok']:.2f} "
+                  f"| BLEU_detok {result['bleu_detok']:.2f} "
+                  f"| ppl {result['test_ppl']}", flush=True)
+
         if args.per_seed and len(present) > 1:
             beam = max(args.beams)
-            for ckpt, seed in zip(present, args.seeds):
-                # present[0] at this beam is already in `results` as the
-                # "single model" row above. Decoding it again would both waste
-                # a decode and leave two identical rows, which any mean over
-                # seeds then weights double -- see dedupe() in
-                # make_endterm_results.py, which also guards already-written
-                # all_results.json files.
-                if ckpt == present[0] and beam in args.beams:
+            for checkpoint, seed in zip(present, args.seeds):
+                # present[0] at this beam is already in `results` as the single
+                # model row above. Decoding it again would both waste a decode
+                # and leave two identical rows, which any mean over seeds then
+                # weights double. See dedupe() in make_endterm_results.py, which
+                # also guards already-written all_results.json files.
+                if checkpoint == present[0] and beam in args.beams:
                     continue
-                res = run_eval([ckpt], data_dir, beam, reverse, args.device,
-                               args.limit, 0.0, "fr", "en", hyp_dir,
-                               f"{direction}{arm}_seed{seed}",
-                               BUCKET_SETS[args.buckets], args.max_decode_len)
-                res["direction"], res["seeds"] = direction, [seed]
-                res["arm"] = args.arm or "base"
-                results.append(res)
-                print(f"  {direction} beam={beam:>2} seed{seed} -> BLEU_tok {res['bleu_tok']:.2f}", flush=True)
+                result = run_eval([checkpoint], dataDir, beam, reverse, args.device,
+                                  args.limit, 0.0, "fr", "en", hypDir,
+                                  f"{direction}{arm}_seed{seed}",
+                                  buckets, args.max_decode_len)
+                result["direction"], result["seeds"] = direction, [seed]
+                result["arm"] = armLabel
+                results.append(result)
+                print(f"  {direction} beam={beam:>2} seed{seed} -> "
+                      f"BLEU_tok {result['bleu_tok']:.2f}", flush=True)
+
         if args.ensemble and len(present) > 1:
             for beam in args.beams:
-                res = run_eval(present, data_dir, beam, reverse, args.device,
-                               args.limit, 0.0, "fr", "en", hyp_dir,
-                               f"{direction}{arm}_ens{len(present)}",
-                               BUCKET_SETS[args.buckets], args.max_decode_len)
-                res["direction"], res["seeds"] = direction, list(args.seeds[: len(present)])
-                res["arm"] = args.arm or "base"
-                results.append(res)
-                print(f"  {direction} beam={beam:>2} ens{len(present)} -> BLEU_tok {res['bleu_tok']:.2f}", flush=True)
+                result = run_eval(present, dataDir, beam, reverse, args.device,
+                                  args.limit, 0.0, "fr", "en", hypDir,
+                                  f"{direction}{arm}_ens{len(present)}",
+                                  buckets, args.max_decode_len)
+                result["direction"] = direction
+                result["seeds"] = list(args.seeds[: len(present)])
+                result["arm"] = armLabel
+                results.append(result)
+                print(f"  {direction} beam={beam:>2} ens{len(present)} -> "
+                      f"BLEU_tok {result['bleu_tok']:.2f}", flush=True)
 
     if not args.rebuild_md:
-        (out / "all_results.json").write_text(json.dumps(results, indent=2))
+        cachedPath.write_text(json.dumps(results, indent=2))
 
-    # ---- CSV -------------------------------------------------------------
-    with (out / "table1_reproduction.csv").open("w", newline="") as fh:
-        w = csv.writer(fh, lineterminator="\n")
-        w.writerow(["direction", "n_models", "seeds", "beam", "bleu_tok", "bleu_detok",
-                    "test_ppl", "n_sentences", "paper_bleu"])
-        for r in results:
-            w.writerow([r["direction"], r["n_models"], "+".join(map(str, r["seeds"])),
-                        r["beam_size"], r["bleu_tok"], r["bleu_detok"], r["test_ppl"],
-                        r["n_sentences"], PAPER.get((r["direction"], r["beam_size"], r["n_models"]), "")])
+    with (outDir / "table1_reproduction.csv").open("w", newline="") as handle:
+        writer = csv.writer(handle, lineterminator="\n")
+        writer.writerow(["direction", "n_models", "seeds", "beam", "bleu_tok",
+                         "bleu_detok", "test_ppl", "n_sentences", "paper_bleu"])
+        for row in results:
+            writer.writerow([
+                row["direction"], row["n_models"], "+".join(map(str, row["seeds"])),
+                row["beam_size"], row["bleu_tok"], row["bleu_detok"], row["test_ppl"],
+                row["n_sentences"],
+                PAPER.get((row["direction"], row["beam_size"], row["n_models"]), ""),
+            ])
 
-    # ---- figures ---------------------------------------------------------
-    plot_bleu_by_length([r for r in results if r["beam_size"] == max(args.beams) and r["n_models"] == 1],
-                        out / "bleu_by_length.png",
-                        f"BLEU by source length ({args.name}) - paper Fig. 3 analogue")
-    plot_beam_sweep(results, out / "beam_sweep.png", f"Beam sweep ({args.name})")
+    plot_bleu_by_length(
+        [r for r in results if r["beam_size"] == max(args.beams) and r["n_models"] == 1],
+        outDir / "bleu_by_length.png",
+        f"BLEU by source length ({args.name}) - paper Fig. 3 analogue",
+    )
+    plot_beam_sweep(results, outDir / "beam_sweep.png", f"Beam sweep ({args.name})")
     plot_training_curves(
-        # ("rev", "fwd") order, not args.directions order: it sets the legend
-        # and draw order, and flipping it changes the rendered PNG for runs that
-        # are otherwise identical.
-        {f"{d}{arm}_seed{s}": runs_root / f"{d}{arm}_seed{s}"
+        # ("rev", "fwd") order, not args.directions order: it sets the legend and
+        # draw order, and flipping it changes the rendered PNG for runs that are
+        # otherwise identical.
+        {f"{d}{arm}_seed{s}": runsRoot / f"{d}{arm}_seed{s}"
          for d in ("rev", "fwd") if d in args.directions
          for s in args.seeds
-         if (runs_root / f"{d}{arm}_seed{s}" / "log.jsonl").exists()},
-        out / "training_curves.png", f"Dev perplexity ({args.name})")
+         if (runsRoot / f"{d}{arm}_seed{s}" / "log.jsonl").exists()},
+        outDir / "training_curves.png", f"Dev perplexity ({args.name})",
+    )
 
-    # ---- markdown --------------------------------------------------------
     lines = [f"# Reproduction results - {args.name}", ""]
     if args.scale_note:
         lines += [f"> **Scale gap.** {args.scale_note}", ""]
-    lines += ["| Method | beam | our BLEU (tok, cased) | our BLEU (sacreBLEU detok) | our test ppl | paper BLEU |",
+    lines += ["| Method | beam | our BLEU (tok, cased) | our BLEU (sacreBLEU detok) "
+              "| our test ppl | paper BLEU |",
               "|---|---|---|---|---|---|"]
-    for r in sorted(results, key=lambda r: (r["direction"] != "fwd", r["n_models"], r["beam_size"])):
-        name = ("Single " if r["n_models"] == 1 else f"Ensemble of {r['n_models']} ") + \
-               ("forward" if r["direction"] == "fwd" else "reversed") + " LSTM"
-        paper = PAPER.get((r["direction"], r["beam_size"], r["n_models"]), "")
-        lines.append(f"| {name} | {r['beam_size']} | **{r['bleu_tok']:.2f}** | {r['bleu_detok']:.2f} | "
-                     f"{r['test_ppl'] if r['test_ppl'] else '-'} | {paper if paper else '-'} |")
-    single = {(r["direction"], r["beam_size"]): r for r in results if r["n_models"] == 1}
-    if ("fwd", 12) in single and ("rev", 12) in single:
-        f12, r12 = single[("fwd", 12)], single[("rev", 12)]
+    ordered = sorted(results, key=lambda r: (r["direction"] != "fwd", r["n_models"],
+                                             r["beam_size"]))
+    for row in ordered:
+        label = ("Single " if row["n_models"] == 1
+                 else f"Ensemble of {row['n_models']} ") + \
+                ("forward" if row["direction"] == "fwd" else "reversed") + " LSTM"
+        paperBleu = PAPER.get((row["direction"], row["beam_size"], row["n_models"]), "")
+        lines.append(f"| {label} | {row['beam_size']} | **{row['bleu_tok']:.2f}** | "
+                     f"{row['bleu_detok']:.2f} | "
+                     f"{row['test_ppl'] if row['test_ppl'] else '-'} | "
+                     f"{paperBleu if paperBleu else '-'} |")
+
+    singles = {(r["direction"], r["beam_size"]): r for r in results if r["n_models"] == 1}
+    if ("fwd", 12) in singles and ("rev", 12) in singles:
+        forward12, reversed12 = singles[("fwd", 12)], singles[("rev", 12)]
+        gain = reversed12["bleu_tok"] - forward12["bleu_tok"]
         lines += ["", "## The paper's central claim, at our scale", "",
-                  f"- BLEU (beam 12): forward **{f12['bleu_tok']:.2f}** -> reversed **{r12['bleu_tok']:.2f}** "
-                  f"(**{r12['bleu_tok'] - f12['bleu_tok']:+.2f}**); paper 26.17 -> 30.59 (+4.42).",
-                  f"- Test perplexity: forward **{f12['test_ppl']}** -> reversed **{r12['test_ppl']}**; "
-                  f"paper 5.8 -> 4.7."]
-    if all(("rev", b) in single for b in (1, 2, 12)):
-        b1, b2, b12 = (single[("rev", b)]["bleu_tok"] for b in (1, 2, 12))
-        head = f"- Beam: B=1 {b1:.2f}, B=2 {b2:.2f}, B=12 {b12:.2f} - "
-        if b12 > b2 > b1:
-            # The paper's ordering: report how much of the gain B=2 captures.
-            frac = (b2 - b1) / (b12 - b1) * 100
-            lines.append(head + f"B=2 recovers {frac:.0f}% of the B=1 -> B=12 gain, "
-                                "as in the paper (sec. 3.2).")
-        elif b12 < b2:
-            # Non-monotone: a percentage "recovered" would be meaningless (and
-            # can exceed 100%), so describe what actually happened instead.
-            lines.append(head + f"BLEU peaks at B=2 and falls by {b2 - b12:.2f} at B=12, so the "
-                                "paper's monotone beam trend does NOT reproduce at our scale. "
-                                "A wider beam does find higher-probability hypotheses, but they "
-                                "are worse translations. Length normalisation removes the brevity "
-                                "penalty and makes BLEU worse still, so brevity is a symptom "
-                                "rather than the cause - see beam_ablation.md for the "
-                                "decomposition.")
+                  f"- BLEU (beam 12): forward **{forward12['bleu_tok']:.2f}** -> "
+                  f"reversed **{reversed12['bleu_tok']:.2f}** (**{gain:+.2f}**); "
+                  f"paper 26.17 -> 30.59 (+4.42).",
+                  f"- Test perplexity: forward **{forward12['test_ppl']}** -> "
+                  f"reversed **{reversed12['test_ppl']}**; paper 5.8 -> 4.7."]
+
+    if all(("rev", b) in singles for b in (1, 2, 12)):
+        bleu1, bleu2, bleu12 = (singles[("rev", b)]["bleu_tok"] for b in (1, 2, 12))
+        head = f"- Beam: B=1 {bleu1:.2f}, B=2 {bleu2:.2f}, B=12 {bleu12:.2f} - "
+        if bleu12 > bleu2 > bleu1:
+            # The paper's ordering, so report how much of the gain B=2 captures.
+            recovered = (bleu2 - bleu1) / (bleu12 - bleu1) * 100
+            lines.append(head + f"B=2 recovers {recovered:.0f}% of the B=1 -> B=12 "
+                                "gain, as in the paper (sec. 3.2).")
+        elif bleu12 < bleu2:
+            # Non-monotone, so a percentage "recovered" would be meaningless and
+            # can exceed 100%. Describe what actually happened instead.
+            lines.append(head + f"BLEU peaks at B=2 and falls by {bleu2 - bleu12:.2f} "
+                                "at B=12, so the paper's monotone beam trend does NOT "
+                                "reproduce at our scale. A wider beam does find "
+                                "higher-probability hypotheses, but they are worse "
+                                "translations. Length normalisation removes the "
+                                "brevity penalty and makes BLEU worse still, so "
+                                "brevity is a symptom rather than the cause - see "
+                                "beam_ablation.md for the decomposition.")
         else:
             lines.append(head + "the ordering is non-monotone; see the per-beam figures.")
+
     lines += ["", "## Figures", "",
               "![BLEU by source length](bleu_by_length.png)", "",
               "![Beam sweep](beam_sweep.png)", "",
@@ -202,26 +229,31 @@ def main():
     if results:
         lines += [f"- tokenized (multi-bleu.pl equivalent): `{results[0]['sig_tok']}`",
                   f"- detokenized sacreBLEU: `{results[0]['sig_detok']}`"]
-    (out / "results.md").write_text("\n".join(lines) + "\n")
+    (outDir / "results.md").write_text("\n".join(lines) + "\n")
 
-    # ---- sample translations (Table 3 analogue) --------------------------
-    best = max((r for r in results if r["direction"] == "rev"), key=lambda r: r["bleu_tok"], default=None)
+    best = max((r for r in results if r["direction"] == "rev"),
+               key=lambda r: r["bleu_tok"], default=None)
     if best:
         stem = (f"rev{arm}_ens{best['n_models']}" if best["n_models"] > 1
                 else f"rev{arm}_seed{best['seeds'][0]}") + f"_beam{best['beam_size']}"
-        hyp_file = hyp_dir / f"{stem}.hyp.detok.fr"
-        if hyp_file.exists():
-            src = read_lines(data_dir / "test.raw.en")
-            ref = read_lines(data_dir / "test.raw.fr")
-            hyp = read_lines(hyp_file)
-            md = [f"# Sample translations - {args.name} (paper Table 3 analogue)", "",
-                  f"Model: reversed, {best['n_models']} model(s), beam {best['beam_size']}.", ""]
-            for i in range(0, min(len(hyp), 400), max(1, min(len(hyp), 400) // 12)):
-                md += [f"**Source**  {src[i]}", "", f"**Ours**    {hyp[i]}", "",
-                       f"**Reference**  {ref[i]}", "", "---", ""]
-            (out / "sample_translations.md").write_text("\n".join(md))
+        hypPath = hypDir / f"{stem}.hyp.detok.fr"
+        if hypPath.exists():
+            sources = read_lines(dataDir / "test.raw.en")
+            references = read_lines(dataDir / "test.raw.fr")
+            hypotheses = read_lines(hypPath)
+            shown = min(len(hypotheses), 400)
+            markdown = [
+                f"# Sample translations - {args.name} (paper Table 3 analogue)", "",
+                f"Model: reversed, {best['n_models']} model(s), "
+                f"beam {best['beam_size']}.", "",
+            ]
+            for i in range(0, shown, max(1, shown // 12)):
+                markdown += [f"**Source**  {sources[i]}", "",
+                             f"**Ours**    {hypotheses[i]}", "",
+                             f"**Reference**  {references[i]}", "", "---", ""]
+            (outDir / "sample_translations.md").write_text("\n".join(markdown))
 
-    print(f"[done] -> {out}")
+    print(f"[done] -> {outDir}")
 
 
 if __name__ == "__main__":

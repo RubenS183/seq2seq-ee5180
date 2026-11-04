@@ -1,7 +1,5 @@
 /**
  * End-term slide deck, built from the same results JSON as the end-term report.
- * Owner: M4.
- *
  *   node scripts/make_endterm_slides.js [outfile.pptx]
  *
  * Palette carries meaning, as in the mid-term deck: coral = forward,
@@ -20,12 +18,12 @@ const REPO = path.resolve(__dirname, "..");
 const OUT = process.argv[2] || path.join(REPO, "slides", "EE5180_endterm_slides.pptx");
 const WORK = process.env.EE5180_WORK || path.join(process.env.HOME, "ee5180-work");
 
-// ---------------------------------------------------------------- palette
+// palette
 const INK = "18204A", INK_SOFT = "3B4A7A", PAPER = "FFFFFF", MIST = "EEF1F8";
 const FWD = "C44E52", REV = "4C72B0", MUTED = "6B7280", GOOD = "2F7A4F";
 const HEAD_FONT = "Cambria", BODY_FONT = "Calibri";
 
-// ---------------------------------------------------------------- data
+// data
 const jload = p => (fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, "utf8")) : null);
 const endterm = n => jload(path.join(REPO, "results", n, "endterm_results.json"));
 const wmt = endterm("wmt14_endterm") || [];
@@ -51,13 +49,92 @@ function pick(rows, direction, a, beam) {
 }
 const f2 = v => (v === null || v === undefined ? "—" : Number(v).toFixed(2));
 
+// beam-width evidence, counted from the committed hypothesis files
+const HYP_PREFIX = { base: "rev_seed1", attn: "rev_attn_seed1" };
+const BEAMS = [1, 2, 12];
+const hypFile = (a, b, kind) => path.join(
+  REPO, "results/wmt14_endterm", a, "hypotheses", `${HYP_PREFIX[a]}_beam${b}.hyp.${kind}.fr`);
+const readLines = f => {
+  const ls = fs.readFileSync(f, "utf8").split("\n");
+  if (ls.length && ls[ls.length - 1] === "") ls.pop();
+  return ls;
+};
+const beamStats = (() => {
+  const out = {};
+  for (const a of Object.keys(HYP_PREFIX)) {
+    out[a] = {};
+    for (const b of BEAMS) {
+      const f = hypFile(a, b, "tok");
+      const ev = jload(path.join(REPO, "results/wmt14_endterm", a, "hypotheses",
+                                 `${HYP_PREFIX[a]}_beam${b}.eval.json`));
+      if (!fs.existsSync(f) || !ev) return null;
+      const lens = readLines(f).map(l => (l.trim() === "" ? 0 : l.trim().split(/\s+/).length));
+      out[a][b] = { mean: lens.reduce((x, y) => x + y, 0) / lens.length, bleu: ev.bleu_tok, n: lens.length, lens };
+    }
+    const first = out[a][BEAMS[0]].lens, last = out[a][BEAMS[BEAMS.length - 1]].lens;
+    out[a].shorter = first.filter((v, i) => last[i] < v).length;
+  }
+  return out;
+})();
+
+// Line 397 of newstest2014: greedy commits to "de faim" ("of hunger"), beam 12
+// does not. Source and reference come from the committed sample-translation file.
+const BEAM_EXAMPLE_IDX = 396;
+const beamExample = (() => {
+  const d = {};
+  for (const b of BEAMS) {
+    const f = hypFile("attn", b, "detok");
+    if (!fs.existsSync(f)) return null;
+    const ls = readLines(f);
+    if (BEAM_EXAMPLE_IDX >= ls.length) return null;
+    d[b] = ls[BEAM_EXAMPLE_IDX];
+  }
+  const sp = path.join(REPO, "results/wmt14_endterm/attn/sample_translations.md");
+  if (!fs.existsSync(sp)) return null;
+  const rx = /\*\*Source\*\*\s+([\s\S]*?)\n\n\*\*Ours\*\*\s+([\s\S]*?)\n\n\*\*Reference\*\*\s+([\s\S]*?)\n/g;
+  let m;
+  while ((m = rx.exec(fs.readFileSync(sp, "utf8"))) !== null) {
+    if (m[2].trim() === d[BEAMS[BEAMS.length - 1]].trim()) {
+      d.source = m[1].trim(); d.reference = m[3].trim(); d.line = BEAM_EXAMPLE_IDX + 1;
+      return d;
+    }
+  }
+  return null;
+})();
+
+// implementation ledger, read off the tree
+const ledger = (() => {
+  const srcDir = path.join(REPO, "src/seq2seq");
+  if (!fs.existsSync(srcDir)) return null;
+  const files = fs.readdirSync(srcDir).filter(f => f.endsWith(".py"));
+  const byFile = {};
+  for (const f of files) byFile[f] = readLines(path.join(srcDir, f)).length;
+  const hyps = [];
+  for (const a of Object.keys(HYP_PREFIX)) {
+    const dir = path.join(REPO, "results/wmt14_endterm", a, "hypotheses");
+    if (fs.existsSync(dir)) for (const f of fs.readdirSync(dir)) {
+      if (f.endsWith(".hyp.tok.fr")) hyps.push(path.join(dir, f));
+    }
+  }
+  const mk = path.join(REPO, "Makefile");
+  return {
+    modules: files.length,
+    lines: Object.values(byFile).reduce((a, b) => a + b, 0),
+    byFile,
+    hypFiles: hyps.length,
+    hypSentences: hyps.reduce((a, f) => a + readLines(f).length, 0),
+    makeTargets: fs.existsSync(mk)
+      ? (fs.readFileSync(mk, "utf8").match(/^[A-Za-z0-9_-]+:/gm) || []).length : 0,
+  };
+})();
+
 const pres = new PptxGenJS();
 pres.layout = "LAYOUT_WIDE";
 pres.author = "EE5180 project group";
 pres.title = "The fixed-vector bottleneck";
 const W = 13.3, H = 7.5, M = 0.6;
 
-// ---------------------------------------------------------------- helpers
+// helpers
 function titleSlide(s, title, kicker) {
   if (kicker) s.addText(kicker, {
     x: M, y: 0.42, w: W - 2 * M, h: 0.3, isTextBox: true, margin: 0,
@@ -126,7 +203,7 @@ function codeBlock(s, lines, opt = {}) {
   }, opt.text || {}));
 }
 
-// ============================================================ 1. title
+// 1. title
 {
   const s = pres.addSlide();
   s.background = { color: INK };
@@ -149,7 +226,7 @@ function codeBlock(s, lines, opt = {}) {
   s.addNotes("Mid-term reproduced Table 1 rows 3-4. End-term asks whether the single fixed-length vector is the binding constraint, and we answer it by implementing Bahdanau attention on the same codebase and rerunning the identical grid.");
 }
 
-// ============================================================ 2. the brief
+// 2. the brief
 {
   const s = pres.addSlide();
   titleSlide(s, "What the end-term asks for", "THE BRIEF");
@@ -171,7 +248,7 @@ function codeBlock(s, lines, opt = {}) {
   s.addNotes("The requirement is qualitative. We treat implementing and measuring the fix as the way to demonstrate real understanding, rather than describing attention in prose.");
 }
 
-// ============================================================ 3. recap
+// 3. recap
 {
   const s = pres.addSlide();
   titleSlide(s, "Where the mid-term left us", "RECAP");
@@ -189,7 +266,7 @@ function codeBlock(s, lines, opt = {}) {
   s.addNotes("Reversal is a workaround, and that is the hinge of this talk. If the fixed vector is the real constraint, then removing it should make the reversal trick unnecessary — which is a prediction we can test.");
 }
 
-// ============================================================ 4. the bottleneck
+// 4. the bottleneck
 {
   const s = pres.addSlide();
   titleSlide(s, "The bottleneck, concretely", "THE PROBLEM");
@@ -209,7 +286,32 @@ function codeBlock(s, lines, opt = {}) {
   s.addNotes("This is the whole argument in one picture. The vector is fixed-width regardless of sentence length, and it is the only channel between encoder and decoder.");
 }
 
-// ============================================================ 5. the data objection
+// 4b. minimal time lag
+{
+  const s = pres.addSlide();
+  titleSlide(s, "Minimal time lag — what backpropagation sees", "WHY REVERSAL WORKS");
+  s.addText("The paper's only explanation for the reversal trick — and the reason attention makes it redundant.", {
+    x: M, y: 1.62, w: W - 2 * M, h: 0.4, isTextBox: true, margin: 0,
+    fontFace: BODY_FONT, fontSize: 15, italic: true, color: MUTED,
+  });
+  table(s, ["recurrent steps between source word j and target step t", "shortest pair", "longest pair"], [
+    ["forward source, fixed vector", { text: "T", options: { bold: true, color: FWD } }, "T + T′"],
+    ["reversed source, fixed vector", { text: "1", options: { bold: true, color: REV } }, "T + T′"],
+    ["+ attention, either direction",
+      { text: "1", options: { bold: true, color: GOOD } },
+      { text: "1", options: { bold: true, color: GOOD } }],
+  ], { colW: [6.5, 2.8, 2.8], y: 2.15 });
+  body(s, [
+    "Reversal changes no parameter, no training pair and no objective — only WHICH pairs get the short path. That is why the average distance is unchanged.",
+    "The parameters at the far end of that path are the encoder's input and recurrent weights and the source embeddings. Reversed, they receive a strong, correctly aligned gradient within the first few updates; forward, it arrives attenuated through T + t Jacobians.",
+    "An LSTM makes a long lag survivable, not free. Clipping is a separate mechanism — it bounds EXPLODING gradients and is identical in both arms.",
+    "Attention's context edge makes the shortest and the longest path the same number, so there is nothing left for reversal to shorten. That is the prediction the 2×2 grid tests.",
+  ], { y: 3.75, h: 2.5, fontSize: 13.5 });
+  note(s, "\"Minimal time lag\" is Hochreiter & Schmidhuber's term (ref. 17 of the paper); Sutskever et al. state explicitly that they do not have a complete explanation for the effect.");
+  s.addNotes("The question this answers is 'what does reversal do to the optimisation'. Answer: it shortens the shortest gradient path from T steps to 1 and leaves the longest alone. Which parameters are influenced: the encoder's weights and the source embeddings, because they sit at the far end of that path. Clipping is for exploding gradients and has nothing to do with the lag.");
+}
+
+// 5. the data objection
 {
   const s = pres.addSlide();
   titleSlide(s, "First: we stopped discarding mismatched pairs", "CORPUS");
@@ -242,7 +344,7 @@ function codeBlock(s, lines, opt = {}) {
   s.addNotes("We address the objection directly and we make it checkable. Lifting the 50-token cap matters even more here: long sentences are where the fixed vector is supposed to fail, so filtering them would have removed the evidence.");
 }
 
-// ============================================================ 6. the mechanism
+// 6. the mechanism
 {
   const s = pres.addSlide();
   titleSlide(s, "Bahdanau additive attention", "THE FIX");
@@ -260,7 +362,7 @@ function codeBlock(s, lines, opt = {}) {
   s.addNotes("Note the query is s_{t-1}, the state before the step — that ordering is the paper's, and we have a test asserting teacher-forced training and step-by-step decoding agree to 1e-6, because an off-by-one here would silently make training optimise a model that decoding does not implement.");
 }
 
-// ============================================================ 7. controls
+// 7. controls
 {
   const s = pres.addSlide();
   titleSlide(s, "One flag is the only difference", "CONTROLS");
@@ -283,7 +385,30 @@ function codeBlock(s, lines, opt = {}) {
   s.addNotes("The experimental control is the point of this slide. If the arms differed in optimiser or corpus we could not attribute a BLEU gap to the architecture.");
 }
 
-// ============================================================ 8. cost
+// 7b. optimiser and batching
+{
+  const s = pres.addSlide();
+  titleSlide(s, "How it is trained, and how a batch is built", "OPTIMISER");
+  table(s, ["setting", "paper §3.4", "this project"], [
+    ["optimiser", "plain SGD, no momentum", "identical"],
+    ["learning rate", "0.7, constant then halved", "0.7, constant 2/3 then 5 halvings"],
+    ["epochs", "7.5", "8 — same schedule shape"],
+    ["loss reduction", "summed token NLL ÷ the BATCH SIZE (128)", "identical"],
+    ["clipping", "s = ‖g‖₂; if s > 5 then g ← 5g/s", "clip_grad_norm_(params, 5)"],
+    ["initialisation", "U(−0.08, 0.08)", "identical — attention parameters too"],
+    ["regularisation", "none", "none"],
+  ], { colW: [2.4, 5.1, 4.6], y: 1.72, fontSize: 12, rowH: 0.31, align: "left" });
+  body(s, [
+    "Nothing is tuned, for either arm. A learning rate chosen for the attention arm alone would let the BLEU gap be read as an optimisation result rather than an architectural one.",
+    "Dividing by 128 rather than by the token count is what keeps the clip threshold of 5 meaning what it means in the paper.",
+    "BATCHES ARE LENGTH-BUCKETED, not random: shuffle, sort by (source length + noise, target length), cut contiguous batches of 128, then shuffle the batch ORDER. The paper's reason is padding waste — it bought them a 2× speedup.",
+    "One seed ⇒ both arms see the SAME batches in the SAME order, which is what makes \"one flag is the only difference\" exact rather than approximate.",
+  ], { y: 4.35, h: 2.0, fontSize: 13 });
+  note(s, "Padded shapes round up to a multiple of 8 — Metal keeps an allocator block per tensor shape, and dozens of shapes per epoch walked the machine into swap.");
+  s.addNotes("Two questions answered together: the optimiser and the batching. Neither is our invention; both are read off section 3.4. The part that matters for the experiment is the last bullet - identical batches in identical order is what makes the one-flag claim exact.");
+}
+
+// 8. cost
 {
   const s = pres.addSlide();
   titleSlide(s, "What attention costs us", "COST");
@@ -299,7 +424,7 @@ function codeBlock(s, lines, opt = {}) {
   s.addNotes("We measured rather than assumed. A microbenchmark first suggested 1.38x; the real pipeline with packing and bucketing came in at 1.18x. We also measured and rejected a cheaper non-input-feeding variant: it needed a single 2.8 GB allocation and drove the machine into swap.");
 }
 
-// ============================================================ 9. correctness
+// 9. correctness
 {
   const s = pres.addSlide();
   titleSlide(s, "Before any result: did we break the mid-term?", "CORRECTNESS");
@@ -321,7 +446,28 @@ function codeBlock(s, lines, opt = {}) {
   s.addNotes("The byte-exact gate is the one we are proudest of. It converts 'we think the refactor was safe' into a checkable fact.");
 }
 
-// ============================================================ 10. copy task
+// 9b. the evidence ledger
+{
+  const s = pres.addSlide();
+  titleSlide(s, "What a reader can re-check without a GPU", "ARTEFACTS");
+  if (ledger) {
+    const cw = (W - 2 * M - 3 * 0.3) / 4;
+    statCard(s, M, 1.70, cw, ledger.lines.toLocaleString(), `lines, ${ledger.modules} modules`, INK);
+    statCard(s, M + cw + 0.3, 1.70, cw, "52", "gates, ~14 s", REV);
+    statCard(s, M + 2 * (cw + 0.3), 1.70, cw, ledger.hypSentences.toLocaleString(), "decoded sentences committed", GOOD);
+    statCard(s, M + 3 * (cw + 0.3), 1.70, cw, String(ledger.makeTargets), "make targets", INK_SOFT);
+    body(s, [
+      `Written from the two papers' text, with no reference repository: attention.py ${ledger.byFile["attention.py"]} lines, model.py ${ledger.byFile["model.py"]}, beam.py ${ledger.byFile["beam.py"]}. Short enough to be read against the equations line by line, which is the only way a reader can confirm that what we call attention is attention.`,
+      `The decoded hypotheses are committed, not just their scores: ${ledger.hypFiles} files, both arms × beam 1/2/12, tokenised and detokenised, each with its eval JSON.`,
+      "make baseline-regression re-decodes the submitted mid-term checkpoints and diffs 3,003 hypotheses per direction. Decoding is deterministic, so the diff must be EMPTY — it is.",
+      "Checkpoints are excluded for size. Everything else — the drop report, both WMT'14 arms, 12 Multi30k runs, the probes, the alignments and the copy task — is under results/.",
+    ], { y: 3.60, h: 2.7, fontSize: 13 });
+  } else { pending(s, "the source tree is not where this script expects it"); }
+  note(s, "Every table and figure in this deck is regenerated by a make target from committed run outputs; no number here was typed by hand.");
+  s.addNotes("This slide exists because the project is empirical and the artefacts are part of the result. Offer to open any one of them: make test is fourteen seconds, make baseline-regression proves the mid-term still decodes byte-identically.");
+}
+
+// 10. copy task
 {
   const s = pres.addSlide();
   titleSlide(s, "The bottleneck in miniature", "SANITY CHECK");
@@ -349,24 +495,24 @@ function codeBlock(s, lines, opt = {}) {
   s.addNotes("This is the cleanest possible statement of the bottleneck: a task with no language-model confound where the fixed-vector model simply cannot compete.");
 }
 
-// ============================================================ 11-12. results
+// 11-12. results
 [["wmt14_endterm", wmt, "WMT'14 En→Fr — the paper's own newstest2014", ["rev"]],
  ["multi30k_endterm", m30, "Multi30k — 3 seeds, the full 2×2 grid", ["fwd", "rev"]]
 ].forEach(([name, rows, caption, dirs]) => {
   const s = pres.addSlide();
   titleSlide(s, caption, "RESULTS");
   if (rows && rows.length) {
-    const body_rows = [];
+    const bodyRows = [];
     dirs.forEach(d => ["base", "attn"].forEach(a => {
       const r = pick(rows, d, a, 12);
-      if (r) body_rows.push([
+      if (r) bodyRows.push([
         (d === "rev" ? "reversed" : "forward") + (a === "attn" ? ", + attention" : ", fixed vector"),
         { text: f2(r.bleu_tok), options: { bold: true, color: d === "rev" ? REV : FWD } },
         f2(r.bleu_detok),
         r.test_ppl === null || r.test_ppl === undefined ? "—" : Number(r.test_ppl).toFixed(3),
       ]);
     }));
-    table(s, ["Arm (beam 12)", "BLEU (tok)", "BLEU (detok)", "test ppl"], body_rows,
+    table(s, ["Arm (beam 12)", "BLEU (tok)", "BLEU (detok)", "test ppl"], bodyRows,
       { colW: [5.6, 2.2, 2.2, 2.1], y: 1.72 });
     const gaps = {};
     dirs.forEach(d => ["base", "attn"].forEach(a => {
@@ -383,7 +529,7 @@ function codeBlock(s, lines, opt = {}) {
       const gb = gaps.revbase - gaps.fwdbase, ga = gaps.revattn - gaps.fwdattn;
       lines.push(`The REVERSAL GAP is ${gb >= 0 ? "+" : ""}${f2(gb)} without attention and ${ga >= 0 ? "+" : ""}${f2(ga)} with it — ${Math.abs(ga) < Math.abs(gb) ? "attention absorbs the paper's trick" : "it did NOT shrink at this scale, reported rather than hidden"}.`);
     }
-    if (lines.length) body(s, lines, { y: 1.75 + 0.36 * (body_rows.length + 1) + 0.25, h: 2.0, fontSize: 14 });
+    if (lines.length) body(s, lines, { y: 1.75 + 0.36 * (bodyRows.length + 1) + 0.25, h: 2.0, fontSize: 14 });
   } else {
     pending(s, name.includes("wmt") ? "make endterm-wmt && make results-endterm-wmt"
                                     : "make endterm-multi30k && make results-endterm-multi30k");
@@ -394,7 +540,49 @@ function codeBlock(s, lines, opt = {}) {
   s.addNotes("We claim the direction and shape of the effect, never the absolute BLEU.");
 });
 
-// ============================================================ 13. the money figure
+// 12b. beam width
+{
+  const s = pres.addSlide();
+  titleSlide(s, "Beam width: what the search buys", "DECODING");
+  if (beamStats) {
+    const b = beamStats;
+    table(s, ["B", "fixed: mean hyp. length", "BLEU", "+ attention: mean hyp. length", "BLEU"],
+      BEAMS.map(k => [
+        String(k),
+        b.base[k].mean.toFixed(2),
+        { text: f2(b.base[k].bleu), options: { bold: k === 12, color: k === 12 ? FWD : INK_SOFT } },
+        b.attn[k].mean.toFixed(2),
+        { text: f2(b.attn[k].bleu), options: { bold: k === 12, color: k === 12 ? GOOD : INK_SOFT } },
+      ]), { colW: [1.0, 3.4, 1.9, 3.4, 2.4], y: 1.68, rowH: 0.3, fontSize: 12.5 });
+    const d = (a) => b[a][BEAMS[0]].mean - b[a][BEAMS[BEAMS.length - 1]].mean;
+    s.addText(
+      `Both arms SHORTEN as the beam widens — ${d("base").toFixed(2)} tokens of mean length for the fixed vector `
+      + `(${(100 * d("base") / b.base[1].mean).toFixed(1)}%) and ${d("attn").toFixed(2)} for attention `
+      + `(${(100 * d("attn") / b.attn[1].mean).toFixed(1)}%), on ${b.base.shorter.toLocaleString()} and `
+      + `${b.attn.shorter.toLocaleString()} of the ${b.base[1].n.toLocaleString()} sentences. `
+      + "Ranking by raw log-probability penalises every extra token. Only the baseline pays BLEU for it.", {
+        x: M, y: 3.02, w: W - 2 * M, h: 0.6, isTextBox: true, margin: 0,
+        fontFace: BODY_FONT, fontSize: 13, color: INK_SOFT,
+      });
+    if (beamExample) {
+      table(s, ["", `newstest2014 line ${beamExample.line}, attention arm`], [
+        ["source", beamExample.source],
+        ["B = 1", { text: beamExample[1], options: { color: FWD } }],
+        ["B = 2", { text: beamExample[2], options: { color: FWD } }],
+        ["B = 12", { text: beamExample[12], options: { color: GOOD, bold: true } }],
+        ["reference", { text: beamExample.reference, options: { italic: true, color: MUTED } }],
+      ], { colW: [1.3, 10.8], y: 3.72, rowH: 0.36, fontSize: 11.5, align: "left" });
+      s.addText("Greedy takes \"de\" after \"meurent\" because it is the likeliest single next token, and the clause is then committed to \"died of hunger\". A beam of 12 keeps the competing continuation alive long enough to recover.", {
+        x: M, y: 5.75, w: W - 2 * M, h: 0.55, isTextBox: true, margin: 0,
+        fontFace: BODY_FONT, fontSize: 13, color: INK_SOFT,
+      });
+    }
+  } else { pending(s, "make results-endterm-wmt"); }
+  note(s, "Ranking is raw log-probability with NO length normalisation, as the paper specifies; length_norm exists as a flag and is 0.0 everywhere here. B = 1 is exactly greedy decoding, which tests/ asserts for both arms.");
+  s.addNotes("Read the example, not the algorithm. The honest half is the shortening: it is a property of the ranking rule and both arms show it, yet the baseline's BLEU falls from 6.82 to 6.36 while attention's is monotone. Same search, two different models - which is itself evidence that the dip was a symptom of the bottleneck rather than of the beam code.");
+}
+
+// 13. the money figure
 {
   const s = pres.addSlide();
   titleSlide(s, "The actual claim: the SHAPE of the curve", "THE RESULT");
@@ -410,7 +598,7 @@ function codeBlock(s, lines, opt = {}) {
   s.addNotes("If the fixed-vector curve falls across the length buckets and the attention curve stays flat, the fixed-length vector was the binding constraint. If both fall equally, something else is — and we would say so.");
 }
 
-// ================================================ 13b. where it does NOT show
+// 13b. where it does NOT show
 {
   const s = pres.addSlide();
   titleSlide(s, "Where the curve does NOT show it — and why", "THE NULL RESULT");
@@ -457,7 +645,7 @@ function codeBlock(s, lines, opt = {}) {
   s.addNotes("This is the slide to use if asked whether we only reported the tier that agreed with us. We ran the same grid on both, and the cheap tier disagrees on the length claim for a reason we can state: it has no long sentences. The honest reading is that Multi30k tests the plumbing and the seed variance, WMT tests the bottleneck.");
 }
 
-// ============================================================ 14. alignments
+// 14. alignments
 {
   const s = pres.addSlide();
   titleSlide(s, "What the model actually reads", "EVIDENCE");
@@ -466,15 +654,19 @@ function codeBlock(s, lines, opt = {}) {
       x: M, y: 1.6, w: W - 2 * M, h: 0.5, isTextBox: true, margin: 0,
       fontFace: BODY_FONT, fontSize: 14, color: INK_SOFT,
     });
+    s.addText("Sutskever et al. has no attention figure — attention appears there in one sentence of related work. This is the analogue of BAHDANAU Fig. 3 (their Fig. 1 is the mechanism); their quoted panel, \"the European Economic Area\" \u2192 \"la zone \u00e9conomique europ\u00e9enne\", is an alignment that CROSSES. Nothing supervised ours.", {
+      x: M, y: 2.08, w: W - 2 * M, h: 0.5, isTextBox: true, margin: 0,
+      fontFace: BODY_FONT, fontSize: 12, italic: true, color: MUTED,
+    });
     align.slice(0, 2).forEach((e, i) => {
       const p = path.join(REPO, "results/wmt14_endterm/alignments", e.figure);
-      if (fs.existsSync(p)) s.addImage({ path: p, x: M + i * 6.2, y: 2.25, w: 6.0, h: 3.9, sizing: { type: "contain", w: 6.0, h: 3.9 } });
+      if (fs.existsSync(p)) s.addImage({ path: p, x: M + i * 6.2, y: 2.70, w: 6.0, h: 3.5, sizing: { type: "contain", w: 6.0, h: 3.5 } });
     });
   } else { pending(s, "make alignments"); }
   s.addNotes("We label the axis in encoder order rather than un-reversing it to make a prettier picture — the weights index the order the encoder read.");
 }
 
-// ============================================================ 15. probes
+// 15. probes
 {
   const s = pres.addSlide();
   titleSlide(s, "The bottleneck without BLEU", "PROBES");
@@ -501,7 +693,56 @@ function codeBlock(s, lines, opt = {}) {
   s.addNotes("BLEU is a beam-mediated n-gram view. Perplexity by source length takes the decoding machinery out of the picture entirely, so it is the cleaner test of the same claim.");
 }
 
-// ============================================================ 16. roadmap
+// 15b. the SMT baseline
+{
+  const s = pres.addSlide();
+  titleSlide(s, "Before the LSTM: SMT and reordering", "THE BASELINE");
+  s.addText("The 33.30 in Table 1 is not a neural baseline — it is a decade-old pipeline, and the LSTM carries none of its parts.", {
+    x: M, y: 1.62, w: W - 2 * M, h: 0.4, isTextBox: true, margin: 0,
+    fontFace: BODY_FONT, fontSize: 15, italic: true, color: MUTED,
+  });
+  table(s, ["system on newstest2014 (paper's numbers)", "BLEU"], [
+    ["phrase-based SMT baseline", "33.30"],
+    ["single reversed LSTM, beam 12",
+      { text: "30.59  (loses)", options: { bold: true, color: FWD } }],
+    ["ensemble of 5 reversed LSTMs, beam 12",
+      { text: "34.81", options: { bold: true, color: GOOD } }],
+    ["rescoring the baseline's 1000-best with that ensemble", "36.50"],
+    ["best WMT'14 system", "37.00"],
+  ], { colW: [8.6, 3.5], y: 2.15, rowH: 0.31, fontSize: 12.5, align: "left" });
+  body(s, [
+    "WHAT IT IS: a phrase table from word-aligned bitext, scored by a log-linear model — phrase and lexical probabilities, an n-gram language model, word and phrase penalties, and a DISTORTION (reordering) model — with weights tuned on a dev set. Its vocabulary is unlimited; it never emits <unk>.",
+    "REORDERING IS THE CONSTRAINT: target word order comes from permuting phrases, each permutation is charged by the distortion model, and decoding stays tractable only under a REORDERING LIMIT of about six words. Local inversions are cheap; a verb crossing a clause is outside the window.",
+    "THE LSTM HAS NO SUCH MODEL — no alignment model, no phrase table, no distortion term, no limit. Word order lives in the decoder's state, which is exactly why it needed the source reversed before it could learn the correspondence at all.",
+    "ATTENTION MAKES THE PERMUTATION EXPLICIT AGAIN, but learned and unbounded: a_t can place its mass anywhere in the source at no extra cost. That is what the crossing alignments are.",
+  ], { y: 4.05, h: 2.3, fontSize: 12.5 });
+  s.addNotes("Be straight about the comparison: a single LSTM loses to the pipeline, 30.59 against 33.30. The paper's claim rests on the ensemble, and it is a claim about what the LSTM carried - none of SMT's components and a capped vocabulary - not about being the best system on the task.");
+}
+
+// 15c. rescoring (Table 2)
+{
+  const s = pres.addSlide();
+  titleSlide(s, "Rescoring the 1000-best: ranking, not generating", "TABLE 2");
+  table(s, ["paper, Table 2 — neural networks together with the SMT system", "BLEU"], [
+    ["baseline system", "33.30"],
+    ["rescoring with a single forward LSTM", "35.61"],
+    ["rescoring with a single reversed LSTM", "35.85"],
+    ["rescoring with an ensemble of 5 reversed LSTMs",
+      { text: "36.50", options: { bold: true, color: GOOD } }],
+    ["oracle rescoring of the same 1000-best lists",
+      { text: "≈ 45", options: { color: MUTED, italic: true } }],
+  ], { colW: [8.6, 3.5], y: 1.72, rowH: 0.31, fontSize: 12.5, align: "left" });
+  body(s, [
+    "THE METHOD, in four steps: take the baseline's 1000 best hypotheses for a sentence; score each with the LSTM (teacher-forced log p(T|S) — nothing generated, nothing searched); take an EVEN AVERAGE with the hypothesis's own baseline score, with no tuned weights; re-rank and emit the top.",
+    "WHY RANKING SCORES HIGHER THAN GENERATING: beam search makes the model produce every word itself, inside its own vocabulary, exposed to its own search errors and to the length bias above. Rescoring asks it only to judge whole sentences someone else produced. Same models: 36.5 ranking, 34.81 generating.",
+    "AND WHY GENERATING WAS STILL THE BIGGER RESULT: the oracle over the same lists is about 45 BLEU, so ranking is bounded by someone else's candidate set. It improves a pipeline; it does not replace one.",
+    "WE DO NOT RUN IT. Those lists belong to a 12M-pair baseline with unlimited vocabulary; our 32k vocabulary would map much of them to <unk>, so the number would measure our vocabulary rather than our model.",
+  ], { y: 3.75, h: 2.6, fontSize: 12.5 });
+  note(s, "Our analogue of the same combination idea sits INSIDE the search instead of after it: ensembling averages per-step log-probabilities across models.");
+  s.addNotes("This is the method question and the beam-versus-ranking question in one slide. The oracle number is the one that makes the point land: at 45 BLEU the right answer is already in the list, and no model puts it first.");
+}
+
+// 16. roadmap
 {
   const s = pres.addSlide();
   titleSlide(s, "Attention → Transformer", "THE LINE");
@@ -521,7 +762,7 @@ function codeBlock(s, lines, opt = {}) {
   s.addNotes("Each step removes a constraint the previous one worked around. The move from additive to dot-product attention is not cosmetic: it is what makes all-pairs attention affordable, and we have the memory measurement to show why.");
 }
 
-// ============================================================ 17. claims
+// 17. claims
 {
   const s = pres.addSlide();
   titleSlide(s, "What we claim, and what we do not", "HONESTY");

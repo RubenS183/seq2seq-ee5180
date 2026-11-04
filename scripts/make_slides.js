@@ -1,7 +1,5 @@
 /**
  * Mid-term slide deck, built from the same results JSON as the report.
- * Owner: M4.
- *
  *   node scripts/make_slides.js [outfile.pptx]
  *
  * The two accent colours ARE the experiment's two conditions: coral = forward,
@@ -14,7 +12,7 @@ const PptxGenJS = require(path.join(process.env.HOME, "ee5180-work/node_modules/
 const REPO = path.resolve(__dirname, "..");
 const OUT = process.argv[2] || path.join(REPO, "slides", "EE5180_midterm_slides.pptx");
 
-// ---------------------------------------------------------------- palette
+// palette
 const INK = "18204A";        // deep indigo — dominant
 const INK_SOFT = "3B4A7A";
 const PAPER = "FFFFFF";
@@ -25,7 +23,7 @@ const MUTED = "6B7280";
 const HEAD_FONT = "Cambria";
 const BODY_FONT = "Calibri";
 
-// ---------------------------------------------------------------- data
+// data
 function load(name) {
   const p = path.join(REPO, "results", name, "all_results.json");
   return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, "utf8")) : [];
@@ -46,7 +44,7 @@ pres.author = "EE5180 project group";
 pres.title = "Reproducing Sutskever et al. (2014)";
 const W = 13.3, H = 7.5, M = 0.6;
 
-// ---------------------------------------------------------------- helpers
+// helpers
 function titleSlide(s, title, kicker) {
   if (kicker) s.addText(kicker, {
     x: M, y: 0.42, w: W - 2 * M, h: 0.3, isTextBox: true, margin: 0,
@@ -94,7 +92,7 @@ function table(s, head, rows, opt = {}) {
     }, opt));
 }
 
-// ============================================================ 1. title
+// 1. title
 {
   const s = pres.addSlide();
   s.background = { color: INK };
@@ -117,7 +115,7 @@ function table(s, head, rows, opt = {}) {
   s.addNotes("We reproduce Table 1 rows 3 and 4 — single forward vs single reversed LSTM — at reduced scale, and are explicit throughout that absolute BLEU is not comparable to the paper's.");
 }
 
-// ============================================================ 2. the ask
+// 2. the ask
 {
   const s = pres.addSlide();
   titleSlide(s, "What the mid-term asks for", "THE BRIEF");
@@ -136,7 +134,7 @@ function table(s, head, rows, opt = {}) {
   s.addNotes("Rows 3 and 4 are also the cheapest scientifically meaningful pair — no ensembling required.");
 }
 
-// ============================================================ 3. method
+// 3. method
 {
   const s = pres.addSlide();
   titleSlide(s, "The method", "HOW IT WORKS");
@@ -154,7 +152,7 @@ function table(s, head, rows, opt = {}) {
   note(s, "Paper: 4 layers x 1000 cells = 8000 numbers per sentence. Ours: 2 x 512 = 2048.");
 }
 
-// ============================================================ 4. why reversal
+// 4. why reversal
 {
   const s = pres.addSlide();
   titleSlide(s, "Why reversing the source should help", "THE CLAIM UNDER TEST");
@@ -172,7 +170,7 @@ function table(s, head, rows, opt = {}) {
   s.addNotes("Paper sec. 3.3: perplexity 5.8 -> 4.7, BLEU 25.9 -> 30.6. This is the paper's key technical contribution.");
 }
 
-// ============================================================ 5. scale gap
+// 5. scale gap
 {
   const s = pres.addSlide();
   s.background = { color: INK };
@@ -205,7 +203,7 @@ function table(s, head, rows, opt = {}) {
   });
 }
 
-// ============================================================ 6. setup
+// 6. setup
 {
   const s = pres.addSlide();
   titleSlide(s, "Data and evaluation", "SETUP");
@@ -223,7 +221,7 @@ function table(s, head, rows, opt = {}) {
   ], { x: M + 0.22, y: 4.68, w: W - 2 * M - 0.44, h: 1.0, isTextBox: true, margin: 0, fontFace: BODY_FONT, fontSize: 13, color: INK_SOFT });
 }
 
-// ============================================================ 7. THE RESULT
+// 7. THE RESULT
 {
   const s = pres.addSlide();
   titleSlide(s, "Table 1 rows 3 and 4, reproduced", "RESULT");
@@ -257,7 +255,7 @@ function table(s, head, rows, opt = {}) {
   note(s, "Scale gap applies: 0.5M pairs vs 12M, 2x512 vs 4x1000, 32k/32k vocab vs 160k/80k. Compare within our column, not against the paper's.");
 }
 
-// ============================================================ 8. beam + length
+// 8. beam + length
 {
   const s = pres.addSlide();
   titleSlide(s, "Beam size and sentence length", "THE OTHER TABLE 1 TRENDS");
@@ -290,7 +288,7 @@ function table(s, head, rows, opt = {}) {
   note(s, useM30 ? "Shown on Multi30k while the WMT runs finish." : "Right-hand panel is our analogue of the paper's Fig. 3.");
 }
 
-// ============================================================ 9. multi30k
+// 9. multi30k
 {
   const s = pres.addSlide();
   titleSlide(s, "A seed-controlled replication", "SUPPORTING EVIDENCE — MULTI30K En→Fr");
@@ -311,7 +309,7 @@ function table(s, head, rows, opt = {}) {
   note(s, "Reversed (blue) sits below forward (red) at every epoch" + (nSeeds > 1 ? `, in all ${nSeeds} seeds.` : "."));
 }
 
-// ============================================================ 10. engineering
+// 10. engineering
 {
   const s = pres.addSlide();
   titleSlide(s, "Getting it right before spending compute", "ENGINEERING");
@@ -340,7 +338,7 @@ function table(s, head, rows, opt = {}) {
   note(s, "PyTorch's Metal LSTM has a history of silently wrong numbers — finding that after an overnight run costs a day.");
 }
 
-// ============================================================ 11. verdict
+// 11. verdict
 {
   const s = pres.addSlide();
   titleSlide(s, "What this establishes — and what it does not", "VERDICT");
@@ -373,7 +371,7 @@ function table(s, head, rows, opt = {}) {
   });
 }
 
-// ============================================================ 12. end-term
+// 12. end-term
 {
   const s = pres.addSlide();
   s.background = { color: INK };

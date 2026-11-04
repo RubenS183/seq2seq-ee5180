@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Render the report Markdown to a print-ready PDF.
 
-Owner: M4. Neither pandoc nor LaTeX is installed on the target machine, so this
-goes Markdown -> styled HTML -> PDF via headless Chrome, which every macOS box
-running this project already has. Images are inlined as data URIs so the PDF
-does not depend on relative paths at print time.
+Neither pandoc nor LaTeX is installed on the target machine, so this goes
+Markdown -> styled HTML -> PDF via headless Chrome, which every macOS box running
+this project already has. Images are inlined as data URIs so the PDF does not
+depend on relative paths at print time.
 
     python scripts/md_to_pdf.py report/EE5180_midterm_report.md
 """
@@ -55,60 +55,60 @@ li { margin: .28em 0; }
 
 
 def inline_images(html: str, base: Path) -> str:
-    def repl(m):
-        src = m.group(1)
-        if src.startswith(("http://", "https://", "data:")):
-            return m.group(0)
-        p = (base / src).resolve()
-        if not p.exists():
-            print(f"  [warn] missing image: {src}", file=sys.stderr)
-            return m.group(0)
-        mime = mimetypes.guess_type(p.name)[0] or "image/png"
-        b64 = base64.b64encode(p.read_bytes()).decode()
-        return f'src="data:{mime};base64,{b64}"'
+    def inlineOne(match):
+        srcPath = match.group(1)
+        if srcPath.startswith(("http://", "https://", "data:")):
+            return match.group(0)
+        imagePath = (base / srcPath).resolve()
+        if not imagePath.exists():
+            print(f"  [warn] missing image: {srcPath}", file=sys.stderr)
+            return match.group(0)
+        mime = mimetypes.guess_type(imagePath.name)[0] or "image/png"
+        encoded = base64.b64encode(imagePath.read_bytes()).decode()
+        return f'src="data:{mime};base64,{encoded}"'
 
-    return re.sub(r'src="([^"]+)"', repl, html)
+    return re.sub(r'src="([^"]+)"', inlineOne, html)
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("markdown")
-    ap.add_argument("--out", default=None)
-    args = ap.parse_args()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("markdown")
+    parser.add_argument("--out", default=None)
+    args = parser.parse_args()
 
-    src = Path(args.markdown).resolve()
-    out = Path(args.out) if args.out else src.with_suffix(".pdf")
+    srcPath = Path(args.markdown).resolve()
+    outPath = Path(args.out) if args.out else srcPath.with_suffix(".pdf")
     if not shutil.which(CHROME) and not Path(CHROME).exists():
         sys.exit(f"Google Chrome not found at {CHROME}; install it or render the .md another way.")
 
     import markdown
 
-    text = src.read_text()
+    text = srcPath.read_text()
     # Strip the $$...$$ math delimiters -- there is no MathJax in this pipeline,
     # and a bare formula reads better than stray dollar signs.
-    text = re.sub(r"\$\$(.+?)\$\$", lambda m: f"\n> {m.group(1).strip()}\n", text, flags=re.S)
+    text = re.sub(r"\$\$(.+?)\$\$", lambda match: f"\n> {match.group(1).strip()}\n", text, flags=re.S)
     text = text.replace("\\mathcal{S}", "S").replace("\\sum", "sum").replace("\\log", "log")
-    text = re.sub(r"\$(\\mathcal\{U\}|[^$]{1,60}?)\$", lambda m: m.group(1), text)
+    text = re.sub(r"\$(\\mathcal\{U\}|[^$]{1,60}?)\$", lambda match: match.group(1), text)
     text = text.replace("\\mathcal{U}", "U").replace("\\lVert", "||").replace("\\rVert", "||")
     text = text.replace("\\frac{1}{|S|}", "1/|S|").replace("\\qquad", "   ")
     text = re.sub(r"\\[a-zA-Z]+\{([^}]*)\}", r"\1", text)
 
-    html_body = markdown.markdown(
+    htmlBody = markdown.markdown(
         text, extensions=["tables", "fenced_code", "attr_list", "sane_lists"]
     )
-    html_body = inline_images(html_body, src.parent)
-    html = f"<!doctype html><html><head><meta charset='utf-8'><style>{CSS}</style></head><body>{html_body}</body></html>"
+    htmlBody = inline_images(htmlBody, srcPath.parent)
+    html = f"<!doctype html><html><head><meta charset='utf-8'><style>{CSS}</style></head><body>{htmlBody}</body></html>"
 
-    with tempfile.TemporaryDirectory() as td:
-        tmp_html = Path(td) / "report.html"
-        tmp_html.write_text(html, encoding="utf-8")
-        out.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory() as tmpDir:
+        tmpHtmlPath = Path(tmpDir) / "report.html"
+        tmpHtmlPath.write_text(html, encoding="utf-8")
+        outPath.parent.mkdir(parents=True, exist_ok=True)
         subprocess.run(
             [CHROME, "--headless", "--disable-gpu", "--no-pdf-header-footer",
-             f"--print-to-pdf={out}", tmp_html.as_uri()],
+             f"--print-to-pdf={outPath}", tmpHtmlPath.as_uri()],
             check=True, capture_output=True, timeout=180,
         )
-    print(f"[pdf] -> {out}  ({out.stat().st_size / 1024:.0f} KB)")
+    print(f"[pdf] -> {outPath}  ({outPath.stat().st_size / 1024:.0f} KB)")
 
 
 if __name__ == "__main__":

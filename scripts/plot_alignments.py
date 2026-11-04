@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 """Alignment heatmaps for a trained attention model (Bahdanau Fig. 3 analogue).
 
-Owner: M4 (analysis & writing).
+The length curves argue the bottleneck statistically. This shows it directly: for
+each generated target token, which source positions did the model read?
 
-The length curves argue the bottleneck statistically. This shows it directly:
-for each generated target token, which source positions did the model read?
-
-Two things to keep straight, both of which are easy to get wrong and would
+Two things to keep straight, both easy to get wrong in a way that would
 misrepresent the model:
 
   * The weights are indexed in the order the ENCODER read the source. For a
@@ -36,85 +34,92 @@ from seq2seq.utils import pick_device  # noqa: E402
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Attention heatmaps for a few test sentences.")
-    ap.add_argument("--checkpoint", required=True)
-    ap.add_argument("--data-dir", required=True)
-    ap.add_argument("--out", default="results/alignments")
-    ap.add_argument("--beam", type=int, default=12)
-    ap.add_argument("--reverse-source", dest="reverse_source", action="store_true", default=False)
-    ap.add_argument("--device", default="cpu")
-    ap.add_argument("--max-decode-len", dest="max_decode_len", type=int, default=150)
-    ap.add_argument("--n", type=int, default=6, help="how many sentences to draw")
-    ap.add_argument("--min-len", dest="min_len", type=int, default=6)
-    ap.add_argument("--max-len", dest="max_len", type=int, default=22,
-                    help="cap so the heatmap stays readable")
-    args = ap.parse_args()
+    parser = argparse.ArgumentParser(
+        description="Attention heatmaps for a few test sentences."
+    )
+    parser.add_argument("--checkpoint", required=True)
+    parser.add_argument("--data-dir", required=True)
+    parser.add_argument("--out", default="results/alignments")
+    parser.add_argument("--beam", type=int, default=12)
+    parser.add_argument("--reverse-source", dest="reverse_source",
+                        action="store_true", default=False)
+    parser.add_argument("--device", default="cpu")
+    parser.add_argument("--max-decode-len", dest="max_decode_len", type=int, default=150)
+    parser.add_argument("--n", type=int, default=6, help="how many sentences to draw")
+    parser.add_argument("--min-len", dest="min_len", type=int, default=6)
+    parser.add_argument("--max-len", dest="max_len", type=int, default=22,
+                        help="cap so the heatmap stays readable")
+    args = parser.parse_args()
 
     device = pick_device(args.device)
-    data_dir = Path(args.data_dir).expanduser()
-    src_vocab, tgt_vocab, splits = load_prepared(data_dir)
-    test = splits["test"]
-    models, metas = load_models([args.checkpoint], src_vocab, tgt_vocab, device)
+    srcVocab, tgtVocab, splits = load_prepared(Path(args.data_dir).expanduser())
+    testSet = splits["test"]
+    models, _ = load_models([args.checkpoint], srcVocab, tgtVocab, device)
     model = models[0]
     if model.attention_kind is None:
         sys.exit("this checkpoint has no attention; there are no alignments to plot")
 
-    out = Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
+    outDir = Path(args.out)
+    outDir.mkdir(parents=True, exist_ok=True)
 
     # Readable sentences only: a 60-token heatmap is unreadable on a slide.
-    picked = [i for i in range(len(test))
-              if args.min_len <= len(test.src_ids[i]) <= args.max_len][: args.n]
+    picked = [i for i in range(len(testSet))
+              if args.min_len <= len(testSet.src_ids[i]) <= args.max_len][: args.n]
     if not picked:
         sys.exit(f"no test sentences with {args.min_len}-{args.max_len} tokens")
 
     index = []
-    for rank, i in enumerate(picked):
-        src_ids = list(test.src_ids[i])
-        hyp_ids, _ = beam_search(
-            model, src_ids, src_vocab, tgt_vocab, beam_size=args.beam,
-            reverse_source=args.reverse_source, device=device,
-            max_decode_len=args.max_decode_len,
+    for rank, testIndex in enumerate(picked):
+        srcIds = list(testSet.src_ids[testIndex])
+        hypIds, _ = beam_search(
+            model, srcIds, srcVocab, tgtVocab, beamSize=args.beam,
+            reverseSource=args.reverse_source, device=device,
+            maxDecodeLen=args.max_decode_len,
         )
-        if not hyp_ids:
+        if not hypIds:
             continue
 
         # Re-run the decoder over its own output to recover the weights. The
-        # encoder input must be built exactly as collate/beam_search build it:
-        # reverse the words, then append <eos>.
-        enc_ids = list(reversed(src_ids)) if args.reverse_source else list(src_ids)
-        enc_ids = enc_ids + [src_vocab.eos_id]
-        src = torch.tensor([enc_ids], dtype=torch.long, device=device)
-        src_len = torch.tensor([len(enc_ids)], dtype=torch.long, device=device)
-        tgt_in = torch.tensor([[tgt_vocab.sos_id] + hyp_ids], dtype=torch.long, device=device)
+        # encoder input must be built exactly as collate and beam_search build
+        # it: reverse the words, then append <eos>.
+        encIds = (list(reversed(srcIds)) if args.reverse_source else list(srcIds))
+        encIds = encIds + [srcVocab.eos_id]
+        src = torch.tensor([encIds], dtype=torch.long, device=device)
+        srcLen = torch.tensor([len(encIds)], dtype=torch.long, device=device)
+        # Starts with <sos>, so row t is the step that EMITTED tgtTokens[t].
+        tgtIn = torch.tensor([[tgtVocab.sos_id] + hypIds], dtype=torch.long,
+                             device=device)
 
-        weights = model.alignments(src, src_len, tgt_in)[0].cpu().numpy()
-        src_tokens = src_vocab.decode(enc_ids[:-1]) + ["<eos>"]
-        tgt_tokens = tgt_vocab.decode(hyp_ids)
-        # tgt_in starts with <sos>, so row t is the step that EMITTED tgt_tokens[t].
-        label = "reversed" if args.reverse_source else "forward"
-        path = out / f"alignment_{rank:02d}.png"
+        weights = model.alignments(src, srcLen, tgtIn)[0].cpu().numpy()
+        srcTokens = srcVocab.decode(encIds[:-1]) + ["<eos>"]
+        tgtTokens = tgtVocab.decode(hypIds)
+        direction = "reversed" if args.reverse_source else "forward"
+        figurePath = outDir / f"alignment_{rank:02d}.png"
         plot_alignment_heatmap(
-            weights[: len(tgt_tokens)], src_tokens, tgt_tokens, path,
-            f"Alignment, {label} source (test sentence {i})",
+            weights[: len(tgtTokens)], srcTokens, tgtTokens, figurePath,
+            f"Alignment, {direction} source (test sentence {testIndex})",
         )
-        index.append({"test_index": i, "figure": path.name,
-                      "source": " ".join(src_vocab.decode(src_ids)),
-                      "hypothesis": " ".join(tgt_tokens)})
-        print(f"  [{rank}] test#{i}: {len(src_ids)} src tokens -> {len(tgt_tokens)} tgt  {path.name}")
+        index.append({"test_index": testIndex, "figure": figurePath.name,
+                      "source": " ".join(srcVocab.decode(srcIds)),
+                      "hypothesis": " ".join(tgtTokens)})
+        print(f"  [{rank}] test#{testIndex}: {len(srcIds)} src tokens -> "
+              f"{len(tgtTokens)} tgt  {figurePath.name}")
 
-    (out / "alignments.json").write_text(json.dumps(index, indent=2))
-    md = ["# Attention alignments (Bahdanau Fig. 3 analogue)", "",
-          f"Model: `{args.checkpoint}`, beam {args.beam}, "
-          f"{'reversed' if args.reverse_source else 'forward'} source.", "",
-          "The source axis is in **encoder reading order**. For a reversed model that is",
-          "right-to-left, so a faithful word-by-word alignment shows up as an anti-diagonal.",
-          "Alignments are over the model's own output, not the reference.", ""]
-    for e in index:
-        md += [f"**Source**  {e['source']}", "", f"**Ours**    {e['hypothesis']}", "",
-               f"![alignment]({e['figure']})", "", "---", ""]
-    (out / "alignments.md").write_text("\n".join(md))
-    print(f"[done] -> {out}")
+    (outDir / "alignments.json").write_text(json.dumps(index, indent=2))
+    markdown = [
+        "# Attention alignments (Bahdanau Fig. 3 analogue)", "",
+        f"Model: `{args.checkpoint}`, beam {args.beam}, "
+        f"{'reversed' if args.reverse_source else 'forward'} source.", "",
+        "The source axis is in **encoder reading order**. For a reversed model that is",
+        "right-to-left, so a faithful word-by-word alignment shows up as an anti-diagonal.",
+        "Alignments are over the model's own output, not the reference.", "",
+    ]
+    for entry in index:
+        markdown += [f"**Source**  {entry['source']}", "",
+                     f"**Ours**    {entry['hypothesis']}", "",
+                     f"![alignment]({entry['figure']})", "", "---", ""]
+    (outDir / "alignments.md").write_text("\n".join(markdown))
+    print(f"[done] -> {outDir}")
 
 
 if __name__ == "__main__":

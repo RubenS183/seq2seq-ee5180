@@ -53,7 +53,7 @@ nothing is hand-edited.
 | File | What it is |
 |---|---|
 | `report/EE5180_endterm_report.pdf` | The end-term report: the bottleneck, the corpus change, Bahdanau attention and its declared deviations, the controlled comparison, the direct probes, and the Attention → Transformer line. |
-| `slides/EE5180_endterm_slides.pptx` | The end-term presentation (18 slides, speaker notes included). |
+| `slides/EE5180_endterm_slides.pptx` | The end-term presentation (24 slides, speaker notes included). |
 | `results/wmt14_endterm/` | The headline comparison: `endterm_results.md`, both arms' tables, the BLEU-by-length overlay, alignment heatmaps, the perplexity and saturation probes. |
 | `results/multi30k_endterm/` | The seed-controlled 2×2 grid (`{forward,reversed} × {fixed vector, attention}`, 3 seeds). |
 | `results/copy_task/` | The bottleneck in miniature — a task the fixed vector cannot solve and attention can. |
@@ -66,10 +66,11 @@ venv, corpora or checkpoints).
 
 | Requirement (topic slides, pp. 8–9) | Where |
 |---|---|
-| Study the bottleneck problem of the fixed-length vector | Report §1 and §7, slides 4 and 15. Quantified three ways that do not share a failure mode: BLEU by source-length bucket, per-token perplexity by bucket (no beam search involved), and sentence-vector norm saturation. |
-| Explain how it motivated Attention | Report §3 and §5–6, slides 6 and 11–13. Not only explained — **implemented** (`src/seq2seq/attention.py`, `AttnDecoder` in `model.py`) and measured against a baseline retrained on identical data, with the identical grid rerun. |
-| … and how Attention motivated the Transformer | Report §9, slide 16. The argument is grounded in this project's own measurements: the constant-length path, the per-step loop we had to pay for because the context enters the recurrence, and the `(B,T,S,A)` memory wall that makes the dot-product score necessary rather than cosmetic. |
-| Time permitting: roadmap to modern LLM-based MT | Report §9 closing paragraph. Traced, but we do not claim to have tested the Transformer step — the self-attention run stayed out of scope and is named as such. |
+| Study the bottleneck problem of the fixed-length vector | Report §1 and §7, slides 4, 17 and 20. Quantified three ways that do not share a failure mode: BLEU by source-length bucket, per-token perplexity by bucket (no beam search involved), and sentence-vector norm saturation. |
+| Explain how it motivated Attention | Report §3 and §5–6, slides 7 and 14–17. Not only explained — **implemented** (`src/seq2seq/attention.py`, `AttnDecoder` in `model.py`) and measured against a baseline retrained on identical data, with the identical grid rerun. |
+| … and how Attention motivated the Transformer | Report §10, slide 23. The argument is grounded in this project's own measurements: the constant-length path, the per-step loop we had to pay for because the context enters the recurrence, and the `(B,T,S,A)` memory wall that makes the dot-product score necessary rather than cosmetic. |
+| *(asked at the mid-term viva)* The SMT baseline and reordering; the rescoring method; beam search versus ranking | Report §9, slides 21–22 and 16. The phrase-based pipeline the LSTM had to beat, why a distortion limit of about six words caps its reordering, Table 2's even-average rescoring, and the measured length bias of raw-log-probability beam search. |
+| Time permitting: roadmap to modern LLM-based MT | Report §10 closing paragraph. Traced, but we do not claim to have tested the Transformer step — the self-attention run stayed out of scope and is named as such. |
 
 ## Points a marker may want to check quickly
 

@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Build the end-term report from the actual run artifacts.
 
-Owner: M4 (analysis & writing).
-
 Same contract as make_report.py: every number is read from a results JSON, a
 prepare_report.json or a training log, so the prose cannot drift from the runs.
 Sections whose artifacts are missing are emitted as an explicit "not yet run"
@@ -29,38 +27,126 @@ def jload(path: Path):
         return None
 
 
-def epochs(run_dir: Path):
-    log = run_dir / "log.jsonl"
-    if not log.exists():
+def epochs(runDir: Path):
+    logPath = runDir / "log.jsonl"
+    if not logPath.exists():
         return []
-    rows = [json.loads(l) for l in log.read_text().splitlines() if l.strip()]
-    return [r for r in rows if r.get("kind") == "epoch"]
+    rows = [json.loads(rawLine) for rawLine in logPath.read_text().splitlines() if rawLine.strip()]
+    return [row for row in rows if row.get("kind") == "epoch"]
 
 
-def pick(rows, direction, arm, beam, n_models=1, n_seeds=1):
-    for r in rows or []:
-        if (r.get("direction") == direction and (r.get("arm") or "base") == arm
-                and r["beam_size"] == beam and r["n_models"] == n_models
-                and len(r.get("seeds", [1])) == n_seeds):
-            return r
+def pick(rows, direction, arm, beam, numModels=1, numSeeds=1):
+    for row in rows or []:
+        if (row.get("direction") == direction and (row.get("arm") or "base") == arm
+                and row["beam_size"] == beam and row["n_models"] == numModels
+                and len(row.get("seeds", [1])) == numSeeds):
+            return row
     return None
 
 
+# newstest2014 line (0-based) used as the worked beam-search example. Chosen
+# because greedy and beam 12 disagree on a clause that is legible without French:
+# "de faim" ("of hunger") is a locally likely continuation that beam 12 avoids.
+BEAM_EXAMPLE = 396
+
+HYP_PREFIX = {"base": "rev_seed1", "attn": "rev_attn_seed1"}
+BEAMS = (1, 2, 12)
+
+
+def hyp_dir(arm):
+    return REPO / "results/wmt14_endterm" / arm / "hypotheses"
+
+
+def beam_lengths():
+    """Mean hypothesis length and BLEU per beam width, counted from the
+    committed hypothesis files rather than copied out of a log."""
+    perArm = {}
+    for arm, prefix in HYP_PREFIX.items():
+        rows = {}
+        for beamWidth in BEAMS:
+            tokPath = hyp_dir(arm) / f"{prefix}_beam{beamWidth}.hyp.tok.fr"
+            evalJson = jload(hyp_dir(arm) / f"{prefix}_beam{beamWidth}.eval.json")
+            if not tokPath.exists() or not evalJson:
+                return None
+            lengths = [len(rawLine.split()) for rawLine in tokPath.read_text().splitlines()]
+            rows[beamWidth] = {"lens": lengths, "mean": sum(lengths) / len(lengths), "bleu": evalJson["bleu_tok"],
+                       "n": len(lengths)}
+        first, last = rows[BEAMS[0]]["lens"], rows[BEAMS[-1]]["lens"]
+        rows["shorter"] = sum(1 for narrow, wide in zip(first, last) if wide < narrow)
+        rows["longer"] = sum(1 for narrow, wide in zip(first, last) if wide > narrow)
+        perArm[arm] = rows
+    return perArm
+
+
+def beam_example(lineIndex=BEAM_EXAMPLE):
+    """The same test sentence decoded at each beam width, with its source and
+    reference recovered from the committed sample-translation file."""
+    import re
+    byBeam = {}
+    for beamWidth in BEAMS:
+        hypPath = hyp_dir("attn") / f"{HYP_PREFIX['attn']}_beam{beamWidth}.hyp.detok.fr"
+        if not hypPath.exists():
+            return None
+        lines = hypPath.read_text().splitlines()
+        if lineIndex >= len(lines):
+            return None
+        byBeam[beamWidth] = lines[lineIndex]
+    samples = REPO / "results/wmt14_endterm/attn/sample_translations.md"
+    if not samples.exists():
+        return None
+    blocks = re.findall(r"\*\*Source\*\*\s+(.*?)\n\n\*\*Ours\*\*\s+(.*?)\n\n"
+                         r"\*\*Reference\*\*\s+(.*?)\n", samples.read_text(), re.S)
+    for sourceText, ours, reference in blocks:
+        if ours.strip() == byBeam[BEAMS[-1]].strip():
+            byBeam["source"] = sourceText.strip()
+            byBeam["reference"] = reference.strip()
+            byBeam["line"] = lineIndex + 1
+            return byBeam
+    return None
+
+
+def cell(text):
+    """Make a hypothesis safe to drop into a Markdown table cell: angle brackets
+    would otherwise be eaten as raw HTML (`<unk>` disappears), and a pipe would
+    split the row."""
+    return (str(text).replace("&", "&amp;").replace("<", "&lt;")
+            .replace(">", "&gt;").replace("|", "&#124;"))
+
+
+def code_ledger():
+    """Counts for the implementation-evidence table, read off the tree."""
+    import re
+    modules = sorted((REPO / "src/seq2seq").glob("*.py"))
+    if not modules:
+        return None
+    lines = {pyFile.name: len(pyFile.read_text().splitlines()) for pyFile in modules}
+    hyps = sorted((REPO / "results/wmt14_endterm").glob("*/hypotheses/*.hyp.tok.fr"))
+    makefilePath = REPO / "Makefile"
+    return {
+        "modules": len(lines),
+        "lines": sum(lines.values()),
+        "by_file": lines,
+        "hyp_files": len(hyps),
+        "hyp_sentences": sum(len(pyFile.read_text().splitlines()) for pyFile in hyps),
+        "make_targets": len(re.findall(r"^[A-Za-z0-9_-]+:", makefilePath.read_text(), re.M)) if makefilePath.exists() else 0,
+    }
+
+
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--out", default="report/EE5180_endterm_report.md")
-    ap.add_argument("--work", default=None, help="defaults to $EE5180_WORK or ~/ee5180-work")
-    args = ap.parse_args()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--out", default="report/EE5180_endterm_report.md")
+    parser.add_argument("--work", default=None, help="defaults to $EE5180_WORK or ~/ee5180-work")
+    args = parser.parse_args()
 
     import os
-    work = Path(args.work or os.environ.get("EE5180_WORK", Path.home() / "ee5180-work"))
+    workDir = Path(args.work or os.environ.get("EE5180_WORK", Path.home() / "ee5180-work"))
 
-    A = []
-    def w(*lines):
-        A.extend(lines)
+    reportLines = []
+    def emit(*lines):
+        reportLines.extend(lines)
 
     # ------------------------------------------------------------------ intro
-    w("# Reproducing Sutskever et al. (2014), part II: the fixed-vector bottleneck", "",
+    emit("# Reproducing Sutskever et al. (2014), part II: the fixed-vector bottleneck", "",
       "EE5180 end-term. Companion to `EE5180_midterm_report.pdf`, which reproduced",
       "rows 3-4 of the paper's Table 1 (single forward vs single reversed LSTM).", "",
       "## 1. The question", "",
@@ -75,6 +161,26 @@ def main():
       "encoder read, which shortens the minimal time lag between aligned words. Our",
       "mid-term measured that trick working (WMT'14 BLEU 3.89 forward -> 6.60 reversed).",
       "",
+      "**Minimal time lag, and what backpropagation sees.** The term is Hochreiter &",
+      "Schmidhuber's, and it is the only explanation the paper offers -- it says so",
+      "explicitly (\"we do not have a complete explanation for this phenomenon\").",
+      "Counting recurrent steps between a source word *j* and the target step *t* that",
+      "needs it:", "",
+      "| | shortest pair | longest pair |", "|---|---|---|",
+      "| forward source, fixed vector | *T* | *T + T'* |",
+      "| reversed source, fixed vector | **1** | *T + T'* |",
+      "| + attention, either direction | **1** | **1** |", "",
+      "Reversal changes no parameter, no training pair and no objective -- only *which*",
+      "pairs get the short path, which is why the average distance is unchanged. The",
+      "parameters at the far end of that path are the encoder's input and recurrent",
+      "weights and the source embeddings: reversed, they receive a strong and correctly",
+      "aligned gradient within the first few updates; forward, the same signal arrives",
+      "attenuated through *T + t* Jacobians. An LSTM makes a long lag survivable rather",
+      "than free, and gradient clipping is a separate mechanism (it bounds *exploding*",
+      "gradients, with the same threshold in both arms). Attention's context edge makes",
+      "the shortest and the longest path the same number, which is prediction 2 below",
+      "stated in gradients instead of in BLEU.",
+      "",
       "This half asks whether the fixed vector is the *binding* constraint, by removing",
       "it: we implement **Bahdanau, Cho & Bengio (2015) additive attention** on the same",
       "codebase and rerun the identical grid. If the bottleneck story is right, two",
@@ -88,11 +194,11 @@ def main():
     # Committed under results/corpus/: this section tells the reader the drop
     # report is the artefact to check, so it has to survive a clone. $WORK is the
     # fallback, for a fresh `make data-endterm` not yet copied across.
-    mid = (jload(REPO / "results/corpus/wmt14_prepared_midterm.json")
-           or jload(work / "data/wmt14/prepared/prepare_report.json"))
-    new = (jload(REPO / "results/corpus/wmt14_prepared_nofilter.json")
-           or jload(work / "data/wmt14/prepared_nofilter/prepare_report.json"))
-    w("## 2. The corpus: no length-mismatch filtering", "",
+    midtermPrep = (jload(REPO / "results/corpus/wmt14_prepared_midterm.json")
+           or jload(workDir / "data/wmt14/prepared/prepare_report.json"))
+    endtermPrep = (jload(REPO / "results/corpus/wmt14_prepared_nofilter.json")
+           or jload(workDir / "data/wmt14/prepared_nofilter/prepare_report.json"))
+    emit("## 2. The corpus: no length-mismatch filtering", "",
       "The mid-term's data pipeline dropped training pairs whose source and target",
       "lengths differed by more than a factor of 2.5, and dropped anything longer than",
       "50 tokens. **The mismatch filter has been removed for the end-term** (it was",
@@ -101,21 +207,21 @@ def main():
       "100, which matters more here than it did at mid-term -- long sentences are",
       "exactly where a fixed-length vector is supposed to fail, so filtering them out",
       "would have quietly removed the evidence.", "")
-    if mid and new:
-        w("| pairs dropped | mid-term (`ratio 2.5`, `len<=50`) | end-term (`ratio inf`, `len<=100`) |",
+    if midtermPrep and endtermPrep:
+        emit("| pairs dropped | mid-term (`ratio 2.5`, `len<=50`) | end-term (`ratio inf`, `len<=100`) |",
           "|---|---|---|")
-        for k, label in (("input", "corpus read"), ("empty", "empty line"),
+        for key, label in (("input", "corpus read"), ("empty", "empty line"),
                          ("length", "over the length cap"),
                          ("ratio", "**source/target length mismatch**"),
                          ("dupe", "exact duplicate"), ("kept", "kept")):
-            w(f"| {label} | {mid['clean'][k]:,} | {new['clean'][k]:,} |")
-        w(f"| **subsampled for training** | **{mid['train_pairs']:,}** | **{new['train_pairs']:,}** |", "",
-          f"So {mid['clean']['ratio']:,} pairs are no longer discarded for a length mismatch"
-          f" and {mid['clean']['length'] - new['clean']['length']:,} are no longer discarded for",
+            emit(f"| {label} | {midtermPrep['clean'][key]:,} | {endtermPrep['clean'][key]:,} |")
+        emit(f"| **subsampled for training** | **{midtermPrep['train_pairs']:,}** | **{endtermPrep['train_pairs']:,}** |", "",
+          f"So {midtermPrep['clean']['ratio']:,} pairs are no longer discarded for a length mismatch"
+          f" and {midtermPrep['clean']['length'] - endtermPrep['clean']['length']:,} are no longer discarded for",
           "length. The drop report in `prepare_report.json` now records `\"ratio\": 0`, which",
           "is the artefact to check rather than taking this paragraph's word for it.", "",
           "Two deliberate choices in how this was done:", "",
-          f"- **The training set is still exactly {new['train_pairs']:,} pairs.** The corpus *size* is",
+          f"- **The training set is still exactly {endtermPrep['train_pairs']:,} pairs.** The corpus *size* is",
           "  held fixed and only its length distribution moves (mean target length 26.07 ->",
           "  30.80 tokens), so the arms differ in what sentences they see, not how many.",
           "- **The mid-term pipeline is untouched.** `clean_pairs` keeps its old defaults and",
@@ -127,10 +233,10 @@ def main():
           "no-attention arm is a fresh run. Both arms read one config file and differ only",
           "in `--attention`.", "")
     else:
-        w("*(drop report not available: run `make data-endterm`)*", "")
+        emit("*(drop report not available: run `make data-endterm`)*", "")
 
     # ---------------------------------------------------------- 3. the method
-    w("## 3. What attention changes, and what is held fixed", "",
+    emit("## 3. What attention changes, and what is held fixed", "",
       "The encoder keeps one annotation `h_j` per source position instead of only its",
       "final state. At each decoder step the model scores every annotation against the",
       "state it is about to update, and reads a weighted average:", "",
@@ -156,7 +262,43 @@ def main():
       "| unidirectional encoder (Bahdanau et al. use a BiRNN) | Adding bidirectionality at the same time as attention would confound the two. It is a separate flag, unused in the reported runs. |",
       "| context enters the first decoder layer and the readout, not every layer | Bahdanau's decoder is single-layer, so any multi-layer placement is a deviation; this one measured no worse and keeps the fused multi-layer LSTM call. |", "")
 
-    w("### Cost", "",
+    emit("### Optimisation and batching", "",
+      "Both are the paper's, section 3.4, and neither was tuned for either arm -- a",
+      "learning rate chosen for the attention arm alone would let the BLEU gap be read",
+      "as an optimisation result rather than an architectural one.", "",
+      "| setting | paper sec. 3.4 | this project |", "|---|---|---|",
+      "| optimiser | plain SGD, no momentum | identical |",
+      "| learning rate | 0.7 | 0.7 |",
+      "| schedule | constant 5 epochs, then halved every half epoch, 7.5 total | constant for the first two thirds, then 5 halvings, 8 total (`lr_constant_epochs 5.34`, `lr_halve_every 0.533`) |",
+      "| loss reduction | summed token NLL divided by **the batch size (128)** | identical |",
+      "| clipping | `s =` &#124;&#124;`g`&#124;&#124;`_2` on that divided gradient; if `s > 5`, `g <- 5g/s` | identical (`clip_grad_norm_(params, 5)`) |",
+      "| initialisation | `U(-0.08, 0.08)` | identical, attention parameters included |",
+      "| regularisation | none | none |", "",
+      "Dividing by 128 rather than by the token count is what keeps the threshold 5",
+      "meaning what it means in the paper; dividing by tokens would rescale the clip",
+      "with sentence length.", "",
+      "**Batching is length-bucketed, not random.** A random minibatch of 128 mixes",
+      "6-token and 100-token sentences, every short sentence is padded out to the",
+      "longest, and most of the arithmetic is spent on padding; the paper's fix is one",
+      "sentence long (\"we made sure that all sentences in a minibatch are roughly of the",
+      "same length\") and bought it a 2x speedup. `make_batches` shuffles the corpus,",
+      "sorts by `(source length + a small random integer, target length)`, cuts the",
+      "sorted index into contiguous batches of 128, then shuffles the *order* of the",
+      "batches. The noise is what makes each epoch's batches differ; a pure sort would",
+      "produce the same batches forever.", "",
+      "Two consequences worth stating. Padded shapes are rounded up to a multiple of 8 --",
+      "not for speed, but because Metal keeps an allocator block per distinct tensor",
+      "shape and bucketing otherwise produces dozens of shapes per epoch (this is the",
+      "same allocator creep that cost the mid-term a 7x throughput collapse). And",
+      "because the batches are built from one seed, **both arms see the same batches in",
+      "the same order**, which is what makes \"one flag is the only difference\" exact",
+      "rather than approximate.", "",
+      "The naive softmax over 32k words remains the memory ceiling -- at batch 128 and 51",
+      "target positions the logits tensor alone is 836 MB, and autograd keeps it for the",
+      "backward pass -- so the loss is computed in checkpointed chunks of 8 target",
+      "positions, which a gate asserts is numerically identical to the unchunked form.", "")
+
+    emit("### Cost", "",
       "Measured with the same instrument as the mid-term (`make benchmark`), at the",
       "end-term's shape on one M1 Pro GPU:", "",
       "| arm | tgt-words/s | parameters | 8 epochs |", "|---|---|---|---|",
@@ -170,7 +312,7 @@ def main():
 
     # ------------------------------------------------------------- 4. gates
     copy = jload(REPO / "results/copy_task/copy_task.json")
-    w("## 4. Correctness, before any result", "",
+    emit("## 4. Correctness, before any result", "",
       "Adding attention meant changing the encoder (it now also returns its",
       "per-position outputs) and beam search (survivor reindexing now carries the",
       "encoder memory bank). Both touch the code that produced the submitted mid-term,",
@@ -197,7 +339,33 @@ def main():
       "  un-quantise the tensor shapes and reintroduce the allocator creep that cost the",
       "  mid-term a 7x throughput collapse.", "")
 
-    w("### The bottleneck in miniature", "",
+    ledger = code_ledger()
+    if ledger:
+        emit("### The evidence ledger", "",
+          "This is a reproduction project, so the artefacts are part of the result. What",
+          "a reader can check without a GPU:", "")
+        named = ("attention.py", "model.py", "beam.py", "data.py")
+        biggestModules = [(name_, ledger["by_file"][name_])
+                          for name_ in named if name_ in ledger["by_file"]]
+        emit(f"| what | how much |", "|---|---|",
+          f"| implementation, written from the two papers' text | **{ledger['lines']:,} lines** "
+          f"across {ledger['modules']} modules, no reference repository |",
+          "| the pieces the argument rests on | "
+          + ", ".join(f"`{module}` {count} lines"
+                      for module, count in biggestModules) + " |",
+          f"| decoded hypotheses committed (WMT'14) | **{ledger['hyp_sentences']:,} sentences** "
+          f"in {ledger['hyp_files']} files -- both arms x beam 1/2/12, tokenised and detokenised, "
+          "each with its eval JSON |",
+          f"| regeneration | **{ledger['make_targets']} make targets**; every table and figure "
+          "below has one |", "",
+          "`attention.py` being short is the point rather than an apology: the mechanism",
+          "can be read against Bahdanau's four equations in a minute, which is the only",
+          "way a reader can confirm that what we call attention is attention. Checkpoints",
+          "are excluded for size; everything else -- the drop report, both WMT'14 arms, the",
+          "12 Multi30k runs, the probes, the alignments and the copy task -- is committed",
+          "under `results/`.", "")
+
+    emit("### The bottleneck in miniature", "",
       "Before spending a night on WMT, the same claim on a task with no confounds:",
       "target == source over uniformly random tokens. Nothing is memorisable and there",
       "is no language model to lean on, so emitting position *t* requires reading source",
@@ -207,7 +375,7 @@ def main():
         attn = copy["arms"]["attention"]["final_loss_per_seq"]
         chance = copy["chance_loss_per_seq"]
         a = copy["arms"]["attention"]
-        w(f"| arm | final loss / sequence | fraction of chance ({chance:.1f}) |", "|---|---|---|",
+        emit(f"| arm | final loss / sequence | fraction of chance ({chance:.1f}) |", "|---|---|---|",
           f"| fixed vector | **{fixed:.3f}** | {fixed / chance:.0%} |",
           f"| + attention | **{attn:.3f}** | {attn / chance:.1%} |", "",
           f"Alignment spread reached {a['alignment_spread']} (1.0 = fully peaked), and the",
@@ -218,7 +386,7 @@ def main():
           "Optimiser: Adam, a controlled demonstration rather than a reported reproduction",
           "(the paper's SGD at 0.7 needs far longer to leave chance on a model this small).", "")
     else:
-        w("*(not yet run: `make copy-task`)*", "")
+        emit("*(not yet run: `make copy-task`)*", "")
 
     # ----------------------------------------------------------- 5-6. results
     for tier, name, note in (
@@ -228,66 +396,205 @@ def main():
                                   "paper's corpus or test set, but the only tier where we can "
                                   "afford error bars and the full 2x2 grid"),
     ):
-        md = REPO / "results" / name / "endterm_results.md"
-        w(f"## {tier}. Results -- {name}", "", f"{note}.", "")
-        if md.exists():
-            body = md.read_text().split("\n")
+        resultsMdPath = REPO / "results" / name / "endterm_results.md"
+        emit(f"## {tier}. Results -- {name}", "", f"{note}.", "")
+        if resultsMdPath.exists():
+            body = resultsMdPath.read_text().split("\n")
             # splice in the generated table/claims, dropping its own H1 and
             # rewriting figure paths to be relative to report/
             for line in body[1:]:
                 if line.startswith("# "):
                     continue
-                w(line.replace("](", f"](../results/{name}/") if line.startswith("![") else line)
+                emit(line.replace("](", f"](../results/{name}/") if line.startswith("![") else line)
         else:
-            w(f"*(not yet run: `make endterm-{'wmt' if 'wmt' in name else 'multi30k'}` then",
+            emit(f"*(not yet run: `make endterm-{'wmt' if 'wmt' in name else 'multi30k'}` then",
               f"`make results-endterm-{'wmt' if 'wmt' in name else 'multi30k'}`)*", "")
-        w("")
+
+        if tier == "5":
+            beamLens, beamExample = beam_lengths(), beam_example()
+            if beamLens:
+                emit("### Beam width: what the search buys, and what it costs", "",
+                  "Decoding is the paper's: at each step every one of the `B` partial hypotheses is",
+                  "extended by every vocabulary word, the candidates are ranked by **raw**",
+                  "log-probability with **no length normalisation**, the best `B` survive, and a",
+                  "hypothesis that emits `<eos>` retires into the completed set, so the beam",
+                  "genuinely shrinks. `length_norm` exists as a flag and is `0.0` in every number",
+                  "reported here. `B = 1` reduces exactly to greedy decoding, which `tests/` asserts",
+                  "for both arms.", "",
+                  "Because the ranking is a raw log-probability, every extra token lowers a",
+                  "hypothesis's score, so a wider beam is biased towards shorter output. Counting",
+                  f"tokens in the committed hypothesis files over all {beamLens['base'][1]['n']:,} test sentences:", "",
+                  "| B | fixed: mean hyp. length | BLEU | + attention: mean hyp. length | BLEU |",
+                  "|---|---|---|---|---|")
+                for beamWidth in BEAMS:
+                    emit(f"| {beamWidth} | {beamLens['base'][beamWidth]['mean']:.2f} | {beamLens['base'][beamWidth]['bleu']:.2f} | "
+                      f"{beamLens['attn'][beamWidth]['mean']:.2f} | {beamLens['attn'][beamWidth]['bleu']:.2f} |")
+                baseDrop = beamLens['base'][BEAMS[0]]['mean'] - beamLens['base'][BEAMS[-1]]['mean']
+                attnDrop = beamLens['attn'][BEAMS[0]]['mean'] - beamLens['attn'][BEAMS[-1]]['mean']
+                emit("", "**Both arms shorten, and only one of them pays for it.** Going from "
+                  f"B = {BEAMS[0]} to B = {BEAMS[-1]}",
+                  f"costs the fixed-vector arm {baseDrop:.2f} tokens of mean length "
+                  f"({baseDrop / beamLens['base'][BEAMS[0]]['mean']:.1%}) and the attention arm "
+                  f"{attnDrop:.2f} ({attnDrop / beamLens['attn'][BEAMS[0]]['mean']:.1%});",
+                  f"beam {BEAMS[-1]} returns a shorter hypothesis than beam {BEAMS[0]} on "
+                  f"{beamLens['base']['shorter']:,} of the baseline's sentences and "
+                  f"{beamLens['attn']['shorter']:,} of the attention arm's.",
+                  "So the shortening is a property of the ranking rule, not of either model --",
+                  "yet the baseline's BLEU peaks at B = 2 and falls, while the attention arm's is",
+                  "monotone. What differs is what the extra hypotheses *are*: under weak",
+                  "fixed-vector conditioning the likelier-but-shorter candidates are worse",
+                  "translations and the brevity penalty collects them. The mid-term decomposed the",
+                  "same effect on its own corpus (length ratio 0.979 -> 0.967 -> 0.945, 4-gram",
+                  "precision *rising* while BLEU falls, and length normalisation overshooting to",
+                  "1.143 and lowering BLEU further, 6.60 -> 6.07). That the effect disappears when",
+                  "the fixed vector does is itself evidence that it was a symptom of the",
+                  "bottleneck rather than of the beam code.", "")
+                if beamExample:
+                    emit("One sentence, to make the mechanism concrete:", "",
+                      f"| | newstest2014 line {beamExample['line']}, attention arm |", "|---|---|",
+                      f"| **source** | {cell(beamExample['source'])} |",
+                      f"| **B = 1** | {cell(beamExample[1])} |",
+                      f"| **B = 2** | {cell(beamExample[2])} |",
+                      f"| **B = 12** | {cell(beamExample[12])} |",
+                      f"| **reference** | {cell(beamExample['reference'])} |", "",
+                      "Greedy takes `de` after `meurent` because it is the likeliest single next",
+                      "token, and the clause is then committed to *died of hunger*, which is not what",
+                      "the source says. A beam of 12 keeps the competing continuation alive long",
+                      "enough for the clause to recover. Nothing about the model changed between the",
+                      "three rows -- only how much of its own distribution the decoder kept open.", "")
+        emit("")
 
     # ------------------------------------------------------------- 7. probes
     probe = jload(REPO / "results/wmt14_endterm/probe/probe.json")
-    w("## 7. The bottleneck without BLEU", "",
+    emit("## 7. The bottleneck without BLEU", "",
       "BLEU is a beam-mediated, n-gram view of a model. Two sharper probes, with no",
       "beam search in them at all.", "")
     if probe:
         base = probe["arms"]["base"]["ppl_by_length"]
         if "attn" in probe["arms"]:
-            at = {r["bucket"]: r["ppl"] for r in probe["arms"]["attn"]["ppl_by_length"]}
-            w("### Per-token perplexity by source length", "",
+            attnPpl = {row["bucket"]: row["ppl"] for row in probe["arms"]["attn"]["ppl_by_length"]}
+            emit("### Per-token perplexity by source length", "",
               "| source length | n | fixed vector | + attention | ratio |", "|---|---|---|---|---|")
-            for r in base:
-                if r["bucket"] in at:
-                    w(f"| {r['bucket']} | {r['n']} | {r['ppl']:.3f} | {at[r['bucket']]:.3f} | "
-                      f"{at[r['bucket']] / r['ppl']:.3f} |")
-            w("", "A ratio that *falls* across the buckets means attention helps more on long",
+            for row in base:
+                if row["bucket"] in attnPpl:
+                    emit(f"| {row['bucket']} | {row['n']} | {row['ppl']:.3f} | {attnPpl[row['bucket']]:.3f} | "
+                      f"{attnPpl[row['bucket']] / row['ppl']:.3f} |")
+            emit("", "A ratio that *falls* across the buckets means attention helps more on long",
               "sentences -- the bottleneck claim stated in the model's own likelihood.", "")
         norms = probe["arms"]["base"].get("sentence_vector_norm", [])
         if norms:
-            w("### Sentence-vector saturation", "",
+            emit("### Sentence-vector saturation", "",
               f"The fixed vector is {probe['arms']['base']['sentence_vector_size']:,} real numbers and",
               "carries the whole source sentence however long it is.", "",
               "| source length | n | mean &#124;&#124;v&#124;&#124; |", "|---|---|---|")
-            for r in norms:
-                w(f"| {r['bucket']} | {r['n']} | {r['mean_norm']:.4f} |")
-            w("", "![Sentence-vector norm](../results/wmt14_endterm/probe/sentence_vector_norm.png)", "")
+            for row in norms:
+                emit(f"| {row['bucket']} | {row['n']} | {row['mean_norm']:.4f} |")
+            emit("", "![Sentence-vector norm](../results/wmt14_endterm/probe/sentence_vector_norm.png)", "")
     else:
-        w("*(not yet run: `make probe`)*", "")
+        emit("*(not yet run: `make probe`)*", "")
 
     # --------------------------------------------------------- 8. alignments
     align = jload(REPO / "results/wmt14_endterm/alignments/alignments.json")
-    w("## 8. What the model reads (Bahdanau Fig. 3 analogue)", "")
+    emit("## 8. What the model reads (Bahdanau Fig. 3 analogue)", "")
     if align:
-        w("Alignments over the model's **own** output, not the reference. The source axis",
+        emit("**Which figure this is an analogue of.** Sutskever et al. contains no attention",
+          "figure -- attention appears in that paper in a single sentence of related work,",
+          "crediting Graves (2013) for the mechanism and Bahdanau et al. for applying it to",
+          "translation, and that sentence is the gap this half of the project fills. The",
+          "figures below answer to **Bahdanau et al.**: their Figure 1 draws the mechanism",
+          "(one annotation per source position, all of them feeding a weighted sum into the",
+          "single decoder state, with edge thickness standing for `a_tj`), and their Figure 3",
+          "plots `a` as a greyscale matrix with the target down one axis and the source",
+          "across the other. The panel of theirs that is usually quoted is *the European",
+          "Economic Area* -> *la zone economique europeenne*, where the alignment **crosses**:",
+          "the last three source words are read in reverse, because French puts the noun",
+          "first. That is the thing a monotone decoder cannot express at all, and the thing",
+          "a distortion-limited phrase-based decoder can only express inside its reordering",
+          "window (section 9).", "",
+          "Alignments over the model's **own** output, not the reference. The source axis",
           "is in **encoder reading order** -- for a reversed model that is right-to-left, so",
           "a faithful word-by-word alignment appears as an anti-diagonal. We label it that",
-          "way rather than un-reversing the axis to make a prettier picture.", "")
-        for e in align[:3]:
-            w(f"**Source**  {e['source']}", "", f"**Ours**    {e['hypothesis']}", "",
-              f"![alignment](../results/wmt14_endterm/alignments/{e['figure']})", "", "---", "")
+          "way rather than un-reversing the axis to make a prettier picture. The local",
+          "departures from that anti-diagonal are reorderings, and nothing supervised them:",
+          "the only training signal was the next French word.", "")
+        for entry in align[:3]:
+            emit(f"**Source**  {entry['source']}", "", f"**Ours**    {entry['hypothesis']}", "",
+              f"![alignment](../results/wmt14_endterm/alignments/{entry['figure']})", "", "---", "")
     else:
-        w("*(not yet run: `make alignments`)*", "")
+        emit("*(not yet run: `make alignments`)*", "")
 
-    # -------------------------------------------- 9. attention -> transformer
-    w("## 9. From attention to the Transformer", "",
+    # ------------------------------------------- 9. the SMT baseline, rescoring
+    emit("## 9. Before the LSTM: phrase-based SMT, reordering, and rescoring", "",
+      "Both of the paper's headline comparisons are against a system this report has so",
+      "far only named, and two of its claims are about ranking rather than translating.",
+      "Both matter for reading Table 1 and Table 2 correctly.", "",
+      "**What the 33.30 baseline is.** Not a neural model: a phrase-based statistical",
+      "machine translation pipeline (the WMT'14 baseline, reference 29 of the paper, the",
+      "same source as the 1000-best lists). Its parts are a **phrase table** extracted",
+      "from word-aligned bitext; a **log-linear** scoring model combining phrase",
+      "translation probabilities in both directions, lexical weights, an **n-gram target",
+      "language model**, word and phrase penalties and a **distortion (reordering)",
+      "model**; feature weights tuned on a development set; and a stack decoder that",
+      "searches over which source words have been covered. Its vocabulary is unlimited --",
+      "it never emits `<unk>`, which is the handicap the LSTM carries throughout.", "",
+      "**Reordering is the part that constrains it.** A phrase table is local: it says",
+      "how to translate a fragment, not where to put it, so target word order has to come",
+      "from **permuting phrases**. Each permutation is charged by the distortion model --",
+      "a plain one scores the jump `|b_i - e_{i-1} - 1|` between consecutive phrases, and",
+      "lexicalised variants learn a monotone / swap / discontinuous orientation per",
+      "phrase -- and because searching all permutations is intractable, decoders impose a",
+      "**reordering limit**, typically around six words. Short, local reorderings are",
+      "therefore cheap and long-range ones lie outside the search window: noun-adjective",
+      "inversion is reachable, a verb crossing a clause is not.", "",
+      "**The LSTM has no such model, and that cuts both ways.** There is no alignment",
+      "model, no phrase table, no distortion term and no reordering limit; word order",
+      "lives entirely in the decoder's hidden state. That is why it can in principle",
+      "reorder arbitrarily, and also why it needed the source reversed before it could",
+      "learn the correspondence at all (section 1). Attention makes the permutation",
+      "explicit again but **learned and unbounded**: `a_t` can place its mass anywhere in",
+      "the source at no extra cost, which is what the crossing alignments of section 8",
+      "are. Read in that order, source reversal and attention are two answers to the same",
+      "question SMT answered with a distortion model.", "",
+      "**How the comparison actually lands**, stated without rounding in our favour:", "",
+      "| system, newstest2014 (paper's numbers) | BLEU |", "|---|---|",
+      "| phrase-based SMT baseline | 33.30 |",
+      "| single reversed LSTM, beam 12 | 30.59 (**loses**) |",
+      "| ensemble of 5 reversed LSTMs, beam 12 | **34.81** |",
+      "| rescoring the baseline's 1000-best with that ensemble | 36.50 |",
+      "| best WMT'14 system | 37.00 |", "",
+      "A single LSTM is *worse* than the pipeline. The paper's claim rests on the",
+      "ensemble, and it is a claim about what the LSTM carried -- none of SMT's",
+      "components, a capped vocabulary, a penalty on every out-of-vocabulary word -- not",
+      "about being the best system on the task.", "",
+      "**Rescoring (Table 2), and why ranking scores higher than generating.** The method",
+      "is four steps: take the baseline's published 1000 best hypotheses for a sentence;",
+      "compute `log p(T|S)` for each under the LSTM, teacher-forced, with nothing",
+      "generated and nothing searched; take an **even average** of that with the",
+      "hypothesis's own baseline score, with no tuned weights; re-rank and emit the top.",
+      "That yields 35.61 (single forward), 35.85 (single reversed) and 36.50 (ensemble of",
+      "5), against the same models' 34.81 by direct decoding.", "",
+      "The asymmetry is worth being precise about, because it is the difference between",
+      "the two uses of a language model in translation. Beam search makes the model",
+      "**generate**: it must produce every word itself, inside its own vocabulary,",
+      "exposed to its own search errors and to the length bias quantified in section 5.",
+      "Rescoring asks it only to **rank** sentences another system produced: it never has",
+      "to spell a word it does not know, the candidate list already carries SMT's",
+      "unlimited vocabulary and its reordering, and the model is used only where it is",
+      "strongest, as a whole-sentence judge. But ranking is bounded by someone else's",
+      "candidate set -- the oracle over the same 1000-best lists is about 45 BLEU, so even",
+      "a perfect ranker stops there. That ceiling is why direct decoding at 34.81 was the",
+      "more consequential result even at the lower score: it is the number that does not",
+      "need the pipeline.", "",
+      "**We do not run Table 2**, and section 11 says so. Those lists belong to a",
+      "12M-pair baseline with an unlimited vocabulary; a 32k-vocabulary model trained on",
+      "1/24 of the data would map a large share of their hypotheses' words to `<unk>`, so",
+      "the resulting number would measure our vocabulary rather than our model. The",
+      "analogue we do have moves the same combination idea *inside* the search:",
+      "ensembling averages per-step log-probabilities across models, a geometric mean of",
+      "their distributions rather than an even average of final scores.", "")
+
+    # ------------------------------------------- 10. attention -> transformer
+    emit("## 10. From attention to the Transformer", "",
       "This is the line the topic asks us to trace, and the experiment above is the",
       "first step on it.", "",
       "**Attention began as a patch and turned out to be the mechanism.** Bahdanau et al.",
@@ -330,8 +637,8 @@ def main():
       "named as future work in the mid-term plan and stayed out of scope. What the runs",
       "above support is the first arrow only.", "")
 
-    # ------------------------------------------------------------ 10. claims
-    w("## 10. What we claim, and what we do not", "",
+    # ------------------------------------------------------------ 11. claims
+    emit("## 11. What we claim, and what we do not", "",
       "- **We do not claim comparable BLEU.** 500k pairs against the paper's 12M, 2x512",
       "  against 4x1000, 32k/32k vocabulary against 160k/80k, one laptop GPU against 8",
       "  GPUs for 10 days. Our absolute numbers are far below Table 1 and we never print",
@@ -343,13 +650,18 @@ def main():
       "  parameter difference is 3.6%, and the baseline was retrained on the same corpus.",
       "- **The mid-term is untouched.** Its hypotheses re-decode byte-identically.",
       "- **Negative results are reported.** The mid-term's beam trend did not reproduce and",
-      "  we said so; anything here that fails to reproduce is reported the same way.", "")
+      "  we said so; anything here that fails to reproduce is reported the same way.",
+      "- **Not attempted, by design**: the Transformer step (explained and motivated from",
+      "  our own measurements in section 10, never run); the paper's 384M-parameter",
+      "  4x1000 configuration; Table 2's rescoring of the SMT 1000-best lists (section 9",
+      "  gives the reason); and a bidirectional encoder, which exists as a flag and is",
+      "  deliberately unused so that it cannot confound attention.", "")
 
-    out = REPO / args.out
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text("\n".join(A) + "\n")
-    missing = sum(1 for line in A if line.startswith("*(not yet run"))
-    print(f"[done] -> {out}  ({len(A)} lines"
+    outPath = REPO / args.out
+    outPath.parent.mkdir(parents=True, exist_ok=True)
+    outPath.write_text("\n".join(reportLines) + "\n")
+    missing = sum(1 for line in reportLines if line.startswith("*(not yet run"))
+    print(f"[done] -> {outPath}  ({len(reportLines)} lines"
           + (f", {missing} section(s) awaiting artifacts)" if missing else ", complete)"))
 
 
